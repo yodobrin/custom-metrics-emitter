@@ -1,0 +1,22 @@
+{ 
+    "time": "2023-01-15T13:03:20", 
+    "data": { 
+        "baseData": { 
+            "metric": "Lag", 
+            "namespace": "Eventhub custom metrics", 
+            "dimNames": [ 
+              "EventHubName", 
+              "ConsumerGroup" 
+            ], 
+            "series": [ 
+              { 
+                "dimValues": [ 
+                  "EventHub1", 
+                  "Consumer1" 
+                ], 
+                "count": 20
+              } 
+            ] 
+        } 
+    } 
+}
