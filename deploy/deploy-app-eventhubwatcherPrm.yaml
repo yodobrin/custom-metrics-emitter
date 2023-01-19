@@ -1,0 +1,58 @@
+﻿apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: eventhub-watcherprm
+  labels:
+    app: eventhub-watcherprm
+spec:
+  selector:
+    matchLabels:
+      app: eventhub-watcherprm
+  template:
+    metadata:
+      labels:
+        app: eventhub-watcherprm
+    spec:
+      containers:
+      - name: eventhub-watcherprm
+        image: yaronpr/custom_metrics_emitter:latest
+        env:
+        - name: EventHubConnectionString
+          valueFrom:
+            secretKeyRef:
+              name: secrets-eventhub-watcherprm
+              key: eventhub-connectionstring
+        - name: CheckPointConnectionString
+          valueFrom:
+            secretKeyRef:
+              name: secrets-eventhub-watcherprm
+              key: checkpoint-connectionstring
+        - name: EventHubName
+          value: step1
+        - name: EventHubConsumerGroup
+          value: $Default
+        - name: CheckPointContainer
+          value: step1checkpoint
+      nodeSelector:
+        "gen2": "yes"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: secrets-eventhub-watcherprm
+  labels:
+    app: eventhub-watcherprm
+data:
+  eventhub-connectionstring: RW5kcG9pbnQ9c2I6Ly9wNHByZW1pdW1ldmVudGh1Yi5zZXJ2aWNlYnVzLndpbmRvd3MubmV0LztTaGFyZWRBY2Nlc3NLZXlOYW1lPVJvb3RNYW5hZ2VTaGFyZWRBY2Nlc3NLZXk7U2hhcmVkQWNjZXNzS2V5PUw4SmRpbGFrTlhpOTRObFpURmVjU2Q0VlpEM2ErMC82YnZMRmRsNExqUXc9
+  checkpoint-connectionstring: RGVmYXVsdEVuZHBvaW50c1Byb3RvY29sPWh0dHBzO0FjY291bnROYW1lPXA0aW5jb21pbmdldmVudHM7QWNjb3VudEtleT1UMmdSS0ErcHErdWRhczVJZUpFTzVLdDNpb0U4U1JZSGxPQ3AwNktUcnRVcENabHFrYXpEVm1ud2FZN0pEaHhvVEJjbnFuSUJUUTBGay9kdWppbWJZQT09O0VuZHBvaW50U3VmZml4PWNvcmUud2luZG93cy5uZXQ=
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: eventhub-watcherprm
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+  selector:
+    app: eventhub-watcherprm

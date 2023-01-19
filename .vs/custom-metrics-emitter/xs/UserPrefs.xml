@@ -1,0 +1,18 @@
+﻿<Properties StartupConfiguration="{104CA399-D6F1-4C36-81E7-2ED8015BE485}|Default">
+  <MonoDevelop.Ide.ItemProperties.custom-metrics-emitter PreferredExecutionTarget="MonoDevelop.Default" />
+  <MonoDevelop.Ide.DebuggingService.Breakpoints />
+  <MultiItemStartupConfigurations />
+  <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" />
+  <MonoDevelop.Ide.Workbench>
+    <Pads>
+      <Pad Id="ProjectPad">
+        <State name="__root__">
+          <Node name="custom-metrics-emitter" expanded="True">
+            <Node name="custom-metrics-emitter" expanded="True" />
+          </Node>
+        </State>
+      </Pad>
+    </Pads>
+  </MonoDevelop.Ide.Workbench>
+  <MonoDevelop.Ide.DebuggingService.PinnedWatches />
+</Properties>
