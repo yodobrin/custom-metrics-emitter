@@ -26,11 +26,11 @@ namespace custom_metrics_emitter.emitters
     {
         public string[]? dimValues { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public int? min { get; set; }
+        public long? min { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public int? max { get; set; }
+        public long? max { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public int? sum { get; set; }
+        public long? sum { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public long? count { get; set; }
     }

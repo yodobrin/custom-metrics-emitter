@@ -59,53 +59,52 @@ namespace custom_metrics_emitter
 
         public override async Task<HttpResponseMessage> SendAsync(AccessToken accessToken)
         {
-            long lag = await CalcLagAsync();
+            var totalLag = await CalcLagAsync();
 
-			var data = new EmitterSchema()
-			{
-				time = DateTime.Now,
-				data = new CustomMetricData()
-				{
-					baseData = new CustomMetricBaseData()
-					{
-						metric = LAG_METRIC_NAME,
-						Namespace = EVENT_HUB_CUSTOM_METRIC_NAMESPACE,
-						dimNames = new string[2] { "EventHubName", "ConsumerGroup" },
-						series = new CustomMetricBaseDataSeriesItem[]
-						{
-							new CustomMetricBaseDataSeriesItem()
-							{
-								dimValues = new string[2] { _eventhubName, _consumerGroup },
-								count = lag
-							}
-						}
+            var emitterdata = new EmitterSchema()
+            {
+                time = DateTime.Now,
+                data = new CustomMetricData()
+                {
+                    baseData = new CustomMetricBaseData()
+                    {
+                        metric = LAG_METRIC_NAME,
+                        Namespace = EVENT_HUB_CUSTOM_METRIC_NAMESPACE,
+                        dimNames = new string[3] { "EventHubName", "ConsumerGroup", "PartitionId" },
+                        series = new CustomMetricBaseDataSeriesItem[totalLag.Count]
 					}
 				}
-			};
-
-            if (lag > 0)
+			};            
+            for (int i = 0; i < totalLag.Count; i++)
             {
-                var res = await EmitterHelper.SendCustomMetric(Region, ResourceId, data, accessToken);
-                return res;
+                emitterdata.data.baseData.series[i] = new CustomMetricBaseDataSeriesItem()
+                {
+                    dimValues = new string[3] { _eventhubName, _consumerGroup, i.ToString() },
+                    count = i + 1,
+                    sum = totalLag[i]
+                };
             }
-            return new HttpResponseMessage(System.Net.HttpStatusCode.PartialContent);
+
+            var res = await EmitterHelper.SendCustomMetric(Region, ResourceId, emitterdata, accessToken);
+            return res;                        
         }
 
-		private async Task<long> CalcLagAsync()
+		private async Task<SortedList<int, long>> CalcLagAsync()
 		{
-            long retVal = 0;
+            SortedList<int, long> retVal = new SortedList<int, long>();
             var checkpointBlobsPrefix = CheckpointPrefix();
 
             var ehInfo = await _eventhubClient.GetRuntimeInformationAsync();
             foreach (string partitionId in ehInfo.PartitionIds)
             {
-                retVal += await UnprocessedMessageInPartition(partitionId);
+                long partitionLag = await CalcLagInPartition(partitionId);
+                retVal.Add(int.Parse(partitionId), partitionLag);
             }
 
             return retVal;
         }
 
-        private async Task<long> UnprocessedMessageInPartition(string partitionId)
+        private async Task<long> CalcLagInPartition(string partitionId)
         {
             long retVal = 0;
             try
@@ -116,58 +115,64 @@ namespace custom_metrics_emitter
                 // if partitionInfo.LastEnqueuedOffset = -1, that means event hub partition is empty
                 if ((partitionInfo != null) && (partitionInfo.LastEnqueuedOffset == "-1"))
                 {
-                    return retVal;
+                    _logger.LogInformation("CalcLagInPartition Empty");                    
                 }
-
-                string checkpointName = CheckpointBlobName(partitionId);
-
-                try
+                else
                 {
-                    BlobProperties properties = await _checkpointContainerClient
-                       .GetBlobClient(checkpointName)
-                       .GetPropertiesAsync(conditions: null, cancellationToken: defaultToken)
-                       .ConfigureAwait(false);
+                    string checkpointName = CheckpointBlobName(partitionId);
 
-                    string strSeqNum, strOffset;
-                    if ((properties.Metadata.TryGetValue(SEQUENCE_NUMBER, out strSeqNum)) && (properties.Metadata.TryGetValue(OFFSET_KEY, out strOffset)))
+                    try
                     {
-                        long seqNum;
-                        if (long.TryParse(strSeqNum, out seqNum))
+                        _logger.LogInformation("CalcLagInPartition GetProperties:" + checkpointName);
+                        BlobProperties properties = await _checkpointContainerClient
+                           .GetBlobClient(checkpointName)
+                           .GetPropertiesAsync(conditions: null, cancellationToken: defaultToken)
+                           .ConfigureAwait(false);
+
+                        string strSeqNum, strOffset;
+                        if ((properties.Metadata.TryGetValue(SEQUENCE_NUMBER, out strSeqNum)) && (properties.Metadata.TryGetValue(OFFSET_KEY, out strOffset)))
                         {
-                            _logger.LogInformation("Got metadata " + checkpointName + " seq=" + seqNum + " offset=" + strOffset);
-
-                            // If checkpoint.Offset is empty that means no messages has been processed from an event hub partition
-                            // And since partitionInfo.LastSequenceNumber = 0 for the very first message hence
-                            // total unprocessed message will be partitionInfo.LastSequenceNumber + 1
-                            if (string.IsNullOrEmpty(strOffset) == true)
+                            long seqNum;
+                            if (long.TryParse(strSeqNum, out seqNum))
                             {
-                                retVal = partitionInfo.LastEnqueuedSequenceNumber + 1;
-                                return retVal;
+                                _logger.LogInformation("CalcLagInPartition Start: " + checkpointName + " seq=" + seqNum + " offset=" + strOffset);
+
+                                // If checkpoint.Offset is empty that means no messages has been processed from an event hub partition
+                                // And since partitionInfo.LastSequenceNumber = 0 for the very first message hence
+                                // total unprocessed message will be partitionInfo.LastSequenceNumber + 1
+                                if (string.IsNullOrEmpty(strOffset) == true)
+                                {
+                                    retVal = partitionInfo.LastEnqueuedSequenceNumber + 1;
+                                }
+                                else
+                                {
+                                    if (partitionInfo.LastEnqueuedSequenceNumber >= seqNum)
+                                    {
+                                        retVal = partitionInfo.LastEnqueuedSequenceNumber - seqNum;
+                                    }
+                                    else
+                                    {
+                                        // Partition is a circular buffer, so it is possible that
+                                        // partitionInfo.LastSequenceNumber < blob checkpoint's SequenceNumber
+                                        retVal = (long.MaxValue - partitionInfo.LastEnqueuedSequenceNumber) + seqNum;
+
+                                        if (retVal < 0)
+                                            retVal = 0;
+                                    }
+                                }
+                                _logger.LogInformation("CalcLagInPartition End: " + checkpointName + " seq=" + seqNum + " offset=" + strOffset + " lag=" + retVal);
                             }
-
-                            if (partitionInfo.LastEnqueuedSequenceNumber >= seqNum)
-                            {
-                                retVal = partitionInfo.LastEnqueuedSequenceNumber - seqNum;
-                                return retVal;
-                            }
-
-                            // Partition is a circular buffer, so it is possible that
-                            // partitionInfo.LastSequenceNumber < blob checkpoint's SequenceNumber
-                            retVal = (long.MaxValue - partitionInfo.LastEnqueuedSequenceNumber) + seqNum;
-
-                            if (retVal < 0)
-                                retVal = 0;
                         }
                     }
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError("Checkpoint container not exist " + ex.ToString());                    
+                    catch (Exception ex)
+                    {
+                        _logger.LogError("CalcLagInPartition: Checkpoint container not exist " + ex.ToString());
+                    }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex.ToString());
+                _logger.LogError("CalcLagInPartition: " + ex.ToString());
             }
             return retVal;
         }
