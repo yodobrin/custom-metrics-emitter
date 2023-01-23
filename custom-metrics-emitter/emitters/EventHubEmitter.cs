@@ -1,10 +1,13 @@
 ﻿using System;
+using System.Threading.Channels;
 using Azure.Core;
+using Azure.Identity;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using custom_metrics_emitter.emitters;
 using Microsoft.Azure.EventHubs;
 using Microsoft.Extensions.Logging;
+using Microsoft.Identity.Client;
 
 namespace custom_metrics_emitter
 {
@@ -16,50 +19,54 @@ namespace custom_metrics_emitter
         private const string SEQUENCE_NUMBER = "sequenceNumber";
         private const string OFFSET_KEY = "offset";
         private const string SERVICE_BUS_HOST_NAME = ".servicebus.windows.net";
+        private const string BLOB_URI_TEMPLATE = "https://{0}.blob.core.windows.net/{1}";
 
         private readonly EventHubClient _eventhubClient;
         private readonly BlobContainerClient _checkpointContainerClient;
 		
-        private readonly string _eventHubConnectionString;
-        private readonly string _fullEventHubConnectionString;
-        private readonly string _eventhubName;
-        private readonly string _consumerGroup;
-        private readonly string _fullyQualifiedNamespace;
-
-        private readonly string _checkpointConnectionString;
+        private readonly string _checkpointAccountName;
 		private readonly string _checkpointContainerName;
 
-        private string Prefix() => $"{_fullyQualifiedNamespace.ToLowerInvariant()}/{_eventhubName.ToLowerInvariant()}/{_consumerGroup.ToLowerInvariant()}";
+        private string Prefix() => $"{_config.EventHubNamespace.ToLowerInvariant()}/{_config.EventHubName.ToLowerInvariant()}/{_config.ConsumerGroup.ToLowerInvariant()}";
         private string OwnershipPrefix() => $"{Prefix()}/ownership/";
         private string CheckpointPrefix() => $"{Prefix()}/checkpoint/";
         private string CheckpointBlobName(string partitionId) => $"{CheckpointPrefix()}{partitionId}";
-        private readonly ILogger<Worker> _logger;
+        
 
-        public EventHubEmitter(ILogger<Worker> logger, string region, string resourceId, string eh_connectionstring,
-			string eventhubName,
-			string consumerGroup,
-			string checkpoint_connectionString,
-			string checkpoint_containerName) : base(region, resourceId)
+        public EventHubEmitter(ILogger<Worker> logger, ChainedTokenCredential token, EmitterConfig config) :
+            base(logger, token, config)
 		{
-            _logger = logger;
-			_eventhubName = eventhubName;
-			_consumerGroup = consumerGroup;
-			_eventHubConnectionString = eh_connectionstring;
-            _fullEventHubConnectionString = _eventHubConnectionString + ";EntityPath=" + _eventhubName;
-            _eventhubClient = EventHubClient.CreateFromConnectionString(_fullEventHubConnectionString);
+            TokenProvider tp = TokenProvider.CreateAzureActiveDirectoryTokenProvider(
+               async (audience, authority, state) =>
+               {
+                   var token = await _token.GetTokenAsync(new Azure.Core.TokenRequestContext(new[] { $"{audience}/.default" }));
+                   return token.Token;
 
-            int index = _eventHubConnectionString.IndexOf(SERVICE_BUS_HOST_NAME);
-			int start = "Endpoint=sb://".Length;
-			_fullyQualifiedNamespace = _eventHubConnectionString.Substring(start, index - start + SERVICE_BUS_HOST_NAME.Length);
-			
-            _checkpointConnectionString = checkpoint_connectionString;
-            _checkpointContainerName = checkpoint_containerName;
-			_checkpointContainerClient = new BlobContainerClient(_checkpointConnectionString, _checkpointContainerName);
+                   #region Alternative with spn
+                   //IConfidentialClientApplication app = ConfidentialClientApplicationBuilder.Create(APP CLIENT ID)
+                   //           .WithAuthority(authority)
+                   //           .WithClientSecret(APP CLIENT PASSWORD)
+                   //           .Build();
+
+                   //var authResult = await app.AcquireTokenForClient(new string[] { $"{audience}/.default" }).ExecuteAsync();
+                   //return authResult.AccessToken;
+                   #endregion
+               },
+               $"https://login.microsoftonline.com/" + _config.TenantId);
+            
+            _eventhubClient = EventHubClient.CreateWithTokenProvider(new Uri(string.Format("sb://{0}/", _config.EventHubNamespace)),
+                _config.EventHubName, tp);            
+            
+            _checkpointAccountName = _config.CheckpointAccountName;
+            _checkpointContainerName = _config.CheckpointContainerName;
+            _checkpointContainerClient = new BlobContainerClient(new Uri(
+                string.Format(BLOB_URI_TEMPLATE, _checkpointAccountName, _checkpointContainerName)),
+                _token);
         }
 
         public override async Task<HttpResponseMessage> SendAsync(AccessToken accessToken)
         {
-            var totalLag = await CalcLagAsync();
+            var totalLag = await GetLagAsync();
 
             var emitterdata = new EmitterSchema()
             {
@@ -79,17 +86,17 @@ namespace custom_metrics_emitter
             {
                 emitterdata.data.baseData.series[i] = new CustomMetricBaseDataSeriesItem()
                 {
-                    dimValues = new string[3] { _eventhubName, _consumerGroup, i.ToString() },
+                    dimValues = new string[3] { _config.EventHubName, _config.ConsumerGroup, i.ToString() },
                     count = i + 1,
                     sum = totalLag[i]
                 };
             }
 
-            var res = await EmitterHelper.SendCustomMetric(Region, ResourceId, emitterdata, accessToken);
+            var res = await EmitterHelper.SendCustomMetric(_config.Region, _config.ResourceId, emitterdata, accessToken);
             return res;                        
         }
 
-		private async Task<SortedList<int, long>> CalcLagAsync()
+		private async Task<SortedList<int, long>> GetLagAsync()
 		{
             SortedList<int, long> retVal = new SortedList<int, long>();
             var checkpointBlobsPrefix = CheckpointPrefix();
@@ -97,14 +104,14 @@ namespace custom_metrics_emitter
             var ehInfo = await _eventhubClient.GetRuntimeInformationAsync();
             foreach (string partitionId in ehInfo.PartitionIds)
             {
-                long partitionLag = await CalcLagInPartition(partitionId);
+                long partitionLag = await LagInPartition(partitionId);
                 retVal.Add(int.Parse(partitionId), partitionLag);
             }
 
             return retVal;
         }
 
-        private async Task<long> CalcLagInPartition(string partitionId)
+        private async Task<long> LagInPartition(string partitionId)
         {
             long retVal = 0;
             try
@@ -115,7 +122,7 @@ namespace custom_metrics_emitter
                 // if partitionInfo.LastEnqueuedOffset = -1, that means event hub partition is empty
                 if ((partitionInfo != null) && (partitionInfo.LastEnqueuedOffset == "-1"))
                 {
-                    _logger.LogInformation("CalcLagInPartition Empty");                    
+                    _logger.LogInformation("LagInPartition Empty");                    
                 }
                 else
                 {
@@ -123,30 +130,32 @@ namespace custom_metrics_emitter
 
                     try
                     {
-                        _logger.LogInformation("CalcLagInPartition GetProperties:" + checkpointName);
+                        _logger.LogInformation("LagInPartition GetProperties:" + checkpointName);
+
                         BlobProperties properties = await _checkpointContainerClient
                            .GetBlobClient(checkpointName)
                            .GetPropertiesAsync(conditions: null, cancellationToken: defaultToken)
                            .ConfigureAwait(false);
 
                         string strSeqNum, strOffset;
-                        if ((properties.Metadata.TryGetValue(SEQUENCE_NUMBER, out strSeqNum)) && (properties.Metadata.TryGetValue(OFFSET_KEY, out strOffset)))
+                        if ((properties.Metadata.TryGetValue(SEQUENCE_NUMBER, out strSeqNum!)) &&
+                            (properties.Metadata.TryGetValue(OFFSET_KEY, out strOffset!)))
                         {
                             long seqNum;
                             if (long.TryParse(strSeqNum, out seqNum))
                             {
-                                _logger.LogInformation("CalcLagInPartition Start: " + checkpointName + " seq=" + seqNum + " offset=" + strOffset);
+                                _logger.LogInformation("LagInPartition Start: " + checkpointName + " seq=" + seqNum + " offset=" + strOffset);
 
                                 // If checkpoint.Offset is empty that means no messages has been processed from an event hub partition
                                 // And since partitionInfo.LastSequenceNumber = 0 for the very first message hence
                                 // total unprocessed message will be partitionInfo.LastSequenceNumber + 1
                                 if (string.IsNullOrEmpty(strOffset) == true)
                                 {
-                                    retVal = partitionInfo.LastEnqueuedSequenceNumber + 1;
+                                    retVal = partitionInfo!.LastEnqueuedSequenceNumber + 1;
                                 }
                                 else
                                 {
-                                    if (partitionInfo.LastEnqueuedSequenceNumber >= seqNum)
+                                    if (partitionInfo!.LastEnqueuedSequenceNumber >= seqNum)
                                     {
                                         retVal = partitionInfo.LastEnqueuedSequenceNumber - seqNum;
                                     }
@@ -160,19 +169,19 @@ namespace custom_metrics_emitter
                                             retVal = 0;
                                     }
                                 }
-                                _logger.LogInformation("CalcLagInPartition End: " + checkpointName + " seq=" + seqNum + " offset=" + strOffset + " lag=" + retVal);
+                                _logger.LogInformation("LagInPartition End: " + checkpointName + " seq=" + seqNum + " offset=" + strOffset + " lag=" + retVal);
                             }
                         }
                     }
                     catch (Exception ex)
                     {
-                        _logger.LogError("CalcLagInPartition: Checkpoint container not exist " + ex.ToString());
+                        _logger.LogError("LagInPartition: Checkpoint container not exist " + ex.ToString());
                     }
                 }
             }
             catch (Exception ex)
             {
-                _logger.LogError("CalcLagInPartition: " + ex.ToString());
+                _logger.LogError("LagInPartition: " + ex.ToString());
             }
             return retVal;
         }

@@ -19,7 +19,6 @@
   <ItemGroup>
     <None Remove="Microsoft.ApplicationInsights.WorkerService" />
     <None Remove="emitters\" />
-    <None Remove="creators\" />
     <None Remove="Azure.Identity" />
     <None Remove="Azure.Messaging.EventHubs" />
     <None Remove="Azure.Messaging.ServiceBus" />
@@ -28,6 +27,5 @@
   </ItemGroup>
   <ItemGroup>
     <Folder Include="emitters\" />
-    <Folder Include="creators\" />
   </ItemGroup>
 </Project>
