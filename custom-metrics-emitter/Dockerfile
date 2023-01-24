@@ -3,10 +3,10 @@ WORKDIR /app
 
 FROM mcr.microsoft.com/dotnet/sdk:6.0 AS build
 WORKDIR /src
-COPY ["custom-metrics-emitter/custom-metrics-emitter.csproj", "custom-metrics-emitter/"]
-RUN dotnet restore "custom-metrics-emitter/custom-metrics-emitter.csproj"
+COPY ["custom-metrics-emitter.csproj", "."]
+RUN dotnet restore "custom-metrics-emitter.csproj"
 COPY . .
-WORKDIR "/src/custom-metrics-emitter"
+WORKDIR "/src"
 RUN dotnet build "custom-metrics-emitter.csproj" -c Release -o /app/build
 
 FROM build AS publish

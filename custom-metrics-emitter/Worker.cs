@@ -8,6 +8,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Web;
+using Microsoft.Extensions.Configuration;
 
 namespace custom_metrics_emitter;
 
@@ -16,97 +17,84 @@ public class Worker : BackgroundService
     private DateTime _lastRefreshToken = DateTime.MinValue;
     private readonly TimeSpan ONE_HOUR = new TimeSpan(1, 0, 0);
     private readonly ILogger<Worker> _logger;
-    private readonly EmitterConfig _config;
-    private readonly TelemetryClient _telemetryClient;
-    private readonly ChainedTokenCredential _credential;
+    private readonly IConfiguration _config;
+    private readonly DefaultAzureCredential _defaultCredential = new DefaultAzureCredential();
     private static HttpClient _httpClient = new HttpClient();
     
     private const string METRICS_SCOPE = "https://monitor.azure.com/.default";
 
-    public Worker(ILogger<Worker> logger, IOptions<EmitterConfig> options, TelemetryClient tc)
+    public Worker(ILogger<Worker> logger, IConfiguration configuration)
     {
         _logger = logger;
-        _config = options.Value;
-        _telemetryClient = tc;
-        _credential = SetChainedTokenCredential();
+        _config = configuration;
     }
-
+    
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         try
-        {            
+        {
+            var emitterConfig = ReadConfiguration();
             EventHubEmitter ehEmitter =
-                new EventHubEmitter(_logger, _credential, _config);
-
+                new EventHubEmitter(_logger, _defaultCredential, emitterConfig);
 
             AccessToken accessToken = default!;
             while (!stoppingToken.IsCancellationRequested)
-            {
+            {                
                 _logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
-                using (_telemetryClient.StartOperation<RequestTelemetry>("operation"))
+                //check if need to get new token
+                if (DateTime.Now.Subtract(ONE_HOUR) > _lastRefreshToken)
                 {
-                    //check if need to get new token
-                    if (DateTime.Now.Subtract(ONE_HOUR) > _lastRefreshToken)
-                    {
-                        accessToken = await GetTokenAsync();
-                        _lastRefreshToken = DateTime.Now;
-                        _logger.LogInformation("Refresh token at:" + _lastRefreshToken.ToString());
-                    }
-                    var res = await ehEmitter.SendAsync(accessToken);
-                    if (((int)res.StatusCode) >= 400)
-                    {
-                        _logger.LogError("Error sending custom event with status:" + res.StatusCode);
-                    }
-                    else
-                    {
-                        _logger.LogInformation("Send Custom Metric end with status:" + res.StatusCode);
-                        _telemetryClient.TrackEvent("Send Custom Metric call event completed with status:" + res.StatusCode);
-                    }
+                    accessToken = await GetTokenAsync();
+                    _lastRefreshToken = DateTime.Now;
+                    _logger.LogInformation("Refresh token at: {lastrefresh}", _lastRefreshToken.ToString());
+                }
+                var res = await ehEmitter.SendAsync(accessToken);
+                if (((int)res.StatusCode) >= 400)
+                {
+                    _logger.LogError("Error sending custom event with status: {status}", res.StatusCode);
+                }
+                else
+                {
+                    _logger.LogInformation("Send Custom Metric end with status: {status}", res.StatusCode);                   
                 }
                 await Task.Delay(10000, stoppingToken);
             }
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex.ToString());
-            _telemetryClient.TrackException(ex);
-        }
-        finally
-        {
-            _telemetryClient.Flush();
-            Task.Delay(5000, stoppingToken).Wait(stoppingToken);
+            _logger.LogError("{error}",ex.ToString());
         }
     }
 
-    private ChainedTokenCredential SetChainedTokenCredential()
-    {
-        ChainedTokenCredential retVal;
+    private EmitterConfig ReadConfiguration()
+    {        
+        var config = new EmitterConfig()
+        {
+            EventHubNamespace = _config.GetValue<string>("EventHubNamespace") ?? string.Empty,
+            EventHubName = _config.GetValue<string>("EventHubName") ?? string.Empty,
+            ConsumerGroup = _config.GetValue<string>("ConsumerGroup") ?? string.Empty,
+            CheckpointAccountName = _config.GetValue<string>("CheckpointAccountName") ?? string.Empty,
+            CheckpointContainerName = _config.GetValue<string>("CheckpointContainerName") ?? string.Empty,
+            Region = _config.GetValue<string>("Region") ?? string.Empty,            
+            TenantId = _config.GetValue<string>("TenantId") ?? string.Empty,
+            SubscriptionId = _config.GetValue<string>("SubscriptionId") ?? string.Empty,
+            ResourceGroup = _config.GetValue<string>("ResourceGroup") ?? string.Empty,
+        };
 
-        var clientId = Environment.GetEnvironmentVariable("AZURE_CLIENT_ID");
-        var clientSecret = Environment.GetEnvironmentVariable("AZURE_CLIENT_SECRET");
-        var tenantId = Environment.GetEnvironmentVariable("AZURE_TENANT_ID");
-        if ((string.IsNullOrEmpty(clientId) == false) && (string.IsNullOrEmpty(clientSecret) == false)
-            && (string.IsNullOrEmpty(tenantId) == false))
+        if ((string.IsNullOrEmpty(config.EventHubNamespace)) || (string.IsNullOrEmpty(config.EventHubName))
+            || (string.IsNullOrEmpty(config.ConsumerGroup)) || (string.IsNullOrEmpty(config.CheckpointAccountName))
+            || (string.IsNullOrEmpty(config.CheckpointContainerName)) || (string.IsNullOrEmpty(config.Region))
+            || (string.IsNullOrEmpty(config.TenantId)) || (string.IsNullOrEmpty(config.SubscriptionId)) || (string.IsNullOrEmpty(config.ResourceGroup)))
         {
-            retVal = new ChainedTokenCredential(
-                new ClientSecretCredential(tenantId, clientId, clientSecret));
+            throw new Exception("Configuration error, missing values");
         }
-        else
-        {
-            retVal = new ChainedTokenCredential(
-                new AzureCliCredential(),
-                new ManagedIdentityCredential()
-            );
-        }
-        
-        return retVal;      
-    }
+        return config;
+    }    
 
     private async Task<AccessToken> GetTokenAsync()
     {        
         var scope = new string[] { METRICS_SCOPE };
-        
-        return await _credential.GetTokenAsync(new TokenRequestContext(scope));        
+        return await _defaultCredential.GetTokenAsync(new TokenRequestContext(scope));        
     }
 }
 
