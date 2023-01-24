@@ -1,0 +1,43 @@
+﻿<Properties StartupConfiguration="{104CA399-D6F1-4C36-81E7-2ED8015BE485}|Default">
+  <MonoDevelop.Ide.Workbench ActiveDocument="custom-metrics-emitter/emitters/EventHubEmitter.cs">
+    <Files>
+      <File FileName="custom-metrics-emitter/Worker.cs" Line="18" Column="38" />
+      <File FileName="custom-metrics-emitter/Program.cs" Line="13" Column="1" />
+      <File FileName="custom-metrics-emitter/appsettings.json" />
+      <File FileName="custom-metrics-emitter/appsettings.Development.json" Line="21" Column="48" />
+      <File FileName="custom-metrics-emitter/.gitignore" />
+      <File FileName="custom-metrics-emitter/Dockerfile" />
+      <File FileName="custom-metrics-emitter/custom-metrics-emitter.csproj" />
+      <File FileName="custom-metrics-emitter/emitters/EventHubEmitter.cs" Line="58" Column="1" />
+      <File FileName="custom-metrics-emitter/emitters/Emitter.cs" Line="11" Column="3" />
+      <File FileName="custom-metrics-emitter/emitters/EmitterConfig.cs" Line="12" Column="72" />
+      <File FileName="custom-metrics-emitter/emitters/EmitterSchema.cs" Line="1" Column="1" />
+      <File FileName="custom-metrics-emitter/emitters/EmitterHelper.cs" Line="30" Column="1" />
+    </Files>
+    <Pads>
+      <Pad Id="ProjectPad">
+        <State name="__root__">
+          <Node name="custom-metrics-emitter" expanded="True">
+            <Node name="custom-metrics-emitter" expanded="True">
+              <Node name="emitters" expanded="True">
+                <Node name="EventHubEmitter.cs" selected="True" />
+              </Node>
+            </Node>
+          </Node>
+        </State>
+      </Pad>
+    </Pads>
+  </MonoDevelop.Ide.Workbench>
+  <MonoDevelop.Ide.DebuggingService.PinnedWatches />
+  <MonoDevelop.Ide.Workspace ActiveConfiguration="Debug" />
+  <MultiItemStartupConfigurations />
+  <MonoDevelop.Ide.DebuggingService.Breakpoints>
+    <BreakpointStore>
+      <Breakpoint file="/Users/yaronprigal/sources/github/custom-metrics-emitter/custom-metrics-emitter/Worker.cs" relfile="custom-metrics-emitter/Worker.cs" line="71" column="1" />
+      <Breakpoint file="/Users/yaronprigal/sources/github/custom-metrics-emitter/custom-metrics-emitter/emitters/EventHubEmitter.cs" relfile="custom-metrics-emitter/emitters/EventHubEmitter.cs" line="80" column="1" />
+      <Breakpoint file="/Users/yaronprigal/sources/github/custom-metrics-emitter/custom-metrics-emitter/emitters/EventHubEmitter.cs" relfile="custom-metrics-emitter/emitters/EventHubEmitter.cs" line="61" column="1" />
+      <Breakpoint file="/Users/yaronprigal/sources/github/custom-metrics-emitter/custom-metrics-emitter/emitters/EventHubEmitter.cs" relfile="custom-metrics-emitter/emitters/EventHubEmitter.cs" line="56" column="1" />
+    </BreakpointStore>
+  </MonoDevelop.Ide.DebuggingService.Breakpoints>
+  <MonoDevelop.Ide.ItemProperties.custom-metrics-emitter PreferredExecutionTarget="MonoDevelop.Default" />
+</Properties>
