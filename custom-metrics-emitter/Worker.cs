@@ -16,9 +16,10 @@ public class Worker : BackgroundService
 {
     private DateTime _lastRefreshToken = DateTime.MinValue;
     private readonly TimeSpan ONE_HOUR = new TimeSpan(1, 0, 0);
+    private readonly int DEFAULT_INTERVAL = 10000;
     private readonly ILogger<Worker> _logger;
     private readonly IConfiguration _config;
-    private readonly DefaultAzureCredential _defaultCredential = new DefaultAzureCredential();
+    private readonly DefaultAzureCredential _defaultCredential;           
     private static HttpClient _httpClient = new HttpClient();
     
     private const string METRICS_SCOPE = "https://monitor.azure.com/.default";
@@ -27,6 +28,13 @@ public class Worker : BackgroundService
     {
         _logger = logger;
         _config = configuration;
+
+        //set managedidenity specific clientid
+        if (!string.IsNullOrEmpty(_config["ManagedIdentityClientId"]))
+            _defaultCredential = new DefaultAzureCredential(
+                new DefaultAzureCredentialOptions { ManagedIdentityClientId = _config["ManagedIdentityClientId"] });
+        else
+            _defaultCredential = new DefaultAzureCredential();
     }
     
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -57,7 +65,7 @@ public class Worker : BackgroundService
                 {
                     _logger.LogInformation("Send Custom Metric end with status: {status}", res.StatusCode);                   
                 }
-                await Task.Delay(10000, stoppingToken);
+                await Task.Delay(emitterConfig.CustomMetricInterval, stoppingToken);
             }
         }
         catch (Exception ex)
@@ -67,7 +75,7 @@ public class Worker : BackgroundService
     }
 
     private EmitterConfig ReadConfiguration()
-    {        
+    {
         var config = new EmitterConfig()
         {
             EventHubNamespace = _config.GetValue<string>("EventHubNamespace") ?? string.Empty,
@@ -75,10 +83,10 @@ public class Worker : BackgroundService
             ConsumerGroup = _config.GetValue<string>("ConsumerGroup") ?? string.Empty,
             CheckpointAccountName = _config.GetValue<string>("CheckpointAccountName") ?? string.Empty,
             CheckpointContainerName = _config.GetValue<string>("CheckpointContainerName") ?? string.Empty,
-            Region = _config.GetValue<string>("Region") ?? string.Empty,            
+            Region = _config.GetValue<string>("Region") ?? string.Empty,
             TenantId = _config.GetValue<string>("TenantId") ?? string.Empty,
             SubscriptionId = _config.GetValue<string>("SubscriptionId") ?? string.Empty,
-            ResourceGroup = _config.GetValue<string>("ResourceGroup") ?? string.Empty,
+            ResourceGroup = _config.GetValue<string>("ResourceGroup") ?? string.Empty,           
         };
 
         if ((string.IsNullOrEmpty(config.EventHubNamespace)) || (string.IsNullOrEmpty(config.EventHubName))
@@ -87,6 +95,22 @@ public class Worker : BackgroundService
             || (string.IsNullOrEmpty(config.TenantId)) || (string.IsNullOrEmpty(config.SubscriptionId)) || (string.IsNullOrEmpty(config.ResourceGroup)))
         {
             throw new Exception("Configuration error, missing values");
+        }
+        if (_config.GetValue<string>("CustomMetricInterval") != null)
+        {
+            int interval = default!;
+            if (int.TryParse(_config.GetValue<string>("CustomMetricInterval"), out interval))
+            {
+                config.CustomMetricInterval = interval;
+            }
+            else
+            {
+                config.CustomMetricInterval = DEFAULT_INTERVAL;
+            }
+        }
+        else
+        {
+            config.CustomMetricInterval = DEFAULT_INTERVAL;
         }
         return config;
     }    
