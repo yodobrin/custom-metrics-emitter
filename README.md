@@ -12,8 +12,8 @@ More about custom metrics in Azure Monitor check [this article](https://learn.mi
    1.  Azure Event Hub
    2.  Azure Storage
    3.  Azure Application Insights (optional)
-1. Producer and Consumer sample application for Azure Event hub (e.g. [this code example]((https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-dotnet-standard-getstarted-send?tabs=passwordless%2Croles-azure-portal))])
-1. Decide on one of the two options for authentication:
+2. Producer and Consumer sample application for Azure Event hub [code example]((https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-dotnet-standard-getstarted-send?tabs=passwordless%2Croles-azure-portal))
+3. Decide on one of the two options for authentication:
    - Service Principal (Azure AD -App Registration)
    - User Managed Identity
   Once decided on the authentication method - the chosen identity should get the following roles:
