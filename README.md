@@ -17,17 +17,17 @@ More about custom metrics in Azure Monitor check [this article](https://learn.mi
    - Service Principal (Azure AD -App Registration)
    - User Managed Identity
 - Once decided on the authentication method - the chosen identity should get the following roles:
-  - Monitoring Metrics Publisher role for Azure Event Hub
-  - Storage Blob Data Reader for Azure Storage
+  - `Monitoring Metrics Publisher` role for Azure Event Hub
+  - `Storage Blob Data Reader` for Azure Storage
 
 ## Build and Publish
-The solution can be deploy on either Azure Container App or any other Azure service which able to host container solution and has User Managed Identity support (in case this is the selected authentication method - see above).
+The solution can be deployed on either Azure Container App or any other Azure service which able to host container solution and has User Managed Identity support (in case this is the selected authentication method - see above).
 
 1. Build and Publish a docker image, in the sample - we are building and publishing the image using Github action which trigger once a new release created.
 2. Deploy the solution on the chosen Azure Service, in the sample - we are using Azure Container App, 
    - if the chosen authentication method is User Managed Identity - assign the identity to the service.
    - The following environemnt variables should be set:
-     - TenantId                 - { Tenant Id of Azure Subscription }
+     - TenantId             - { Tenant Id of Azure Subscription }
      - SubscriptionId           - { Azure Subscription Id }
      - ResourceGroup            - { Resource Group name where the Azure Event Hub deployed }
      - Region                   - { Region name where the Azure Event Hub deployed }
@@ -35,16 +35,17 @@ The solution can be deploy on either Azure Container App or any other Azure serv
      - EventHubName             - { Name of Azure Event Hub }
      - ConsumerGroup            - { Consumer Group which need to be monitored }
      - CheckpointAccountName    - { Azure Storage name of checkpoint }
-     - CheckpointContainerName  - { Container name in the checkpoint storage which the consumer update }      
+     - CheckpointContainerName  - { Container name which the consumer update }      
      - AZURE_TENANT_ID (optional - in case of SPN authentication)
      - AZURE_CLIENT_ID (optional - in case of SPN authentication)
      - AZURE_CLIENT_SECRET (optional - in case of SPN authentication)
      - APPLICATIONINSIGHTS_CONNECTION_STRING (optional) - Azure Application Insights connection string
 
 Example of running the docker image locally:
-docker run -d -e EventHubNamespace="{EventHubNamespace}" -e Region="{Region}" -e SubscriptionId="{SubscriptionId}" -e ResourceGroup="{ResourceGroup}" -e TenantId="{TenantId}"  -e EventHubName="{EventHubName}" -e ConsumerGroup="{ConsumerGroup}" -e CheckpointAccountName="{CheckpointAccountName}" -e CheckpointContainerName="{CheckpointContainerName}" -e APPLICATIONINSIGHTS_CONNECTION_STRING="{APPLICATIONINSIGHTS_CONNECTION_STRING}" -e AZURE_TENANT_ID={AZURE_TENANT_ID} -e AZURE_CLIENT_ID={AZURE_CLIENT_ID} -e AZURE_CLIENT_SECRET={AZURE_CLIENT_SECRET}  <dockerimagename>
+
+`docker run -d -e EventHubNamespace="{EventHubNamespace}" -e Region="{Region}" -e SubscriptionId="{SubscriptionId}" -e ResourceGroup="{ResourceGroup}" -e TenantId="{TenantId}"  -e EventHubName="{EventHubName}" -e ConsumerGroup="{ConsumerGroup}" -e CheckpointAccountName="{CheckpointAccountName}" -e CheckpointContainerName="{CheckpointContainerName}" -e APPLICATIONINSIGHTS_CONNECTION_STRING="{APPLICATIONINSIGHTS_CONNECTION_STRING}" -e AZURE_TENANT_ID={AZURE_TENANT_ID} -e AZURE_CLIENT_ID={AZURE_CLIENT_ID} -e AZURE_CLIENT_SECRET={AZURE_CLIENT_SECRET}  <dockerimagename>`
 
 ## Custom Metric
-Exaple of the json schema file which send the custom metric can be found [here](test/custom1.json)
+Example of json schema which send a custom metric can be found [here](test/custom1.json)
 As the schema also include the partition number as one of the dimensions - we can have a view of unprocessed events per partition:
 ![image](design/view.png)
