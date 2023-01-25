@@ -12,7 +12,7 @@ namespace custom_metrics_emitter
         public string ConsumerGroup { get; set; } = default!;
         public string CheckpointAccountName { get; set; } = default!;
         public string CheckpointContainerName { get; set; } = default!;
-
+        public int CustomMetricInterval { get; set; } = default!;
     }
 }
 
