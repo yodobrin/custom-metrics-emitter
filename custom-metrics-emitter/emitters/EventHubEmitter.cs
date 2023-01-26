@@ -20,10 +20,12 @@ namespace custom_metrics_emitter
         private const string OFFSET_KEY = "offset";
         private const string SERVICE_BUS_HOST_NAME = ".servicebus.windows.net";
         private const string BLOB_URI_TEMPLATE = "https://{0}.blob.core.windows.net/{1}";
+        private const string METRICS_SCOPE = "https://monitor.azure.com/.default";
 
-        private readonly EventHubClient _eventhubClient;
-        private readonly BlobContainerClient _checkpointContainerClient;
-		
+        private EventHubClient _eventhubClient = default!;
+        private BlobContainerClient _checkpointContainerClient = default!;
+        private AccessToken _metricAccessToken = default!;
+
         private readonly string _checkpointAccountName;
 		private readonly string _checkpointContainerName;
         private readonly string _eventhubresourceId;
@@ -34,40 +36,28 @@ namespace custom_metrics_emitter
         private string CheckpointBlobName(string partitionId) => $"{CheckpointPrefix()}{partitionId}";
         
 
-        public EventHubEmitter(ILogger<Worker> logger, DefaultAzureCredential defaultCredential, EmitterConfig config) :
+        public EventHubEmitter(ILogger<Worker> logger, EmitterConfig config) :
             base(logger, config)
-		{
-            TokenProvider tp = TokenProvider.CreateAzureActiveDirectoryTokenProvider(
-               async (audience, authority, state) =>
-               {                   
-                   var token = await defaultCredential.GetTokenAsync(new Azure.Core.TokenRequestContext(new[] { $"{audience}/.default" }));
-                   return token.Token;
-
-                   #region Alternative with spn
-                   //IConfidentialClientApplication app = ConfidentialClientApplicationBuilder.Create(APP CLIENT ID)
-                   //           .WithAuthority(authority)
-                   //           .WithClientSecret(APP CLIENT PASSWORD)
-                   //           .Build();
-
-                   //var authResult = await app.AcquireTokenForClient(new string[] { $"{audience}/.default" }).ExecuteAsync();
-                   //return authResult.AccessToken;
-                   #endregion
-               },
-               $"https://login.microsoftonline.com/{_config.TenantId}");
-            
-            _eventhubClient = EventHubClient.CreateWithTokenProvider(new Uri(string.Format("sb://{0}.servicebus.windows.net/", _config.EventHubNamespace)),
-                _config.EventHubName, tp);
-
+		{            
             _eventhubresourceId = string.Format("/subscriptions/{0}/resourceGroups/{1}/providers/Microsoft.EventHub/namespaces/{2}",
                 config.SubscriptionId, config.ResourceGroup, config.EventHubNamespace);
             _checkpointAccountName = _config.CheckpointAccountName;
-            _checkpointContainerName = _config.CheckpointContainerName;
-            _checkpointContainerClient = new BlobContainerClient(new Uri(
-                string.Format(BLOB_URI_TEMPLATE, _checkpointAccountName, _checkpointContainerName)),
-                defaultCredential);
+            _checkpointContainerName = _config.CheckpointContainerName;           
         }
 
-        public override async Task<HttpResponseMessage> SendAsync(AccessToken accessToken)
+        public async Task RefreshTokens(DefaultAzureCredential defaultCredential)
+        {
+            _eventhubClient = EventHubClient.CreateWithTokenProvider(new Uri(string.Format("sb://{0}.servicebus.windows.net/", _config.EventHubNamespace)),
+                _config.EventHubName, GetTokenProvider(defaultCredential));
+
+            _checkpointContainerClient = new BlobContainerClient(new Uri(
+               string.Format(BLOB_URI_TEMPLATE, _checkpointAccountName, _checkpointContainerName)),
+               defaultCredential);
+
+            _metricAccessToken = await GetTokenAsync(defaultCredential);
+        }        
+
+        public override async Task<HttpResponseMessage> SendAsync()
         {
             var totalLag = await GetLagAsync();
 
@@ -95,7 +85,7 @@ namespace custom_metrics_emitter
                 };
             }
 
-            var res = await EmitterHelper.SendCustomMetric(_config.Region, _eventhubresourceId, emitterdata, accessToken, _logger);
+            var res = await EmitterHelper.SendCustomMetric(_config.Region, _eventhubresourceId, emitterdata, _metricAccessToken, _logger);
             return res;                        
         }
 
@@ -180,6 +170,33 @@ namespace custom_metrics_emitter
             }
             return retVal;
         }
-    }
+
+        private TokenProvider GetTokenProvider(DefaultAzureCredential defaultCredential)
+        {
+            return TokenProvider.CreateAzureActiveDirectoryTokenProvider(
+              async (audience, authority, state) =>
+              {
+                  var token = await defaultCredential.GetTokenAsync(new Azure.Core.TokenRequestContext(new[] { $"{audience}/.default" }));
+                  return token.Token;
+
+                  #region Alternative with spn
+                  //IConfidentialClientApplication app = ConfidentialClientApplicationBuilder.Create(APP CLIENT ID)
+                  //           .WithAuthority(authority)
+                  //           .WithClientSecret(APP CLIENT PASSWORD)
+                  //           .Build();
+
+                  //var authResult = await app.AcquireTokenForClient(new string[] { $"{audience}/.default" }).ExecuteAsync();
+                  //return authResult.AccessToken;
+                  #endregion
+              },
+              $"https://login.microsoftonline.com/{_config.TenantId}");
+        }
+
+        private async Task<AccessToken> GetTokenAsync(DefaultAzureCredential defaultCredential)
+        {
+            var scope = new string[] { METRICS_SCOPE };
+            return await defaultCredential.GetTokenAsync(new TokenRequestContext(scope));
+        }
+    }    
 }
 

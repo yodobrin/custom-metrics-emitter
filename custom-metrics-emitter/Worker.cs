@@ -22,7 +22,7 @@ public class Worker : BackgroundService
     private readonly DefaultAzureCredential _defaultCredential;           
     private static HttpClient _httpClient = new HttpClient();
     
-    private const string METRICS_SCOPE = "https://monitor.azure.com/.default";
+    
 
     public Worker(ILogger<Worker> logger, IConfiguration configuration)
     {
@@ -43,20 +43,19 @@ public class Worker : BackgroundService
         {
             var emitterConfig = ReadConfiguration();
             EventHubEmitter ehEmitter =
-                new EventHubEmitter(_logger, _defaultCredential, emitterConfig);
-
-            AccessToken accessToken = default!;
+                new EventHubEmitter(_logger, emitterConfig);
+            
             while (!stoppingToken.IsCancellationRequested)
             {                
                 _logger.LogInformation("Worker running at: {time}", DateTimeOffset.Now);
-                //check if need to get new token
+                //check if need to get new tokens
                 if (DateTime.Now.Subtract(ONE_HOUR) > _lastRefreshToken)
-                {
-                    accessToken = await GetTokenAsync();
+                {                    
+                    await ehEmitter.RefreshTokens(_defaultCredential);
                     _lastRefreshToken = DateTime.Now;
-                    _logger.LogInformation("Refresh token at: {lastrefresh}", _lastRefreshToken.ToString());
+                    _logger.LogInformation("Get refresh tokens at: {lastrefresh}", _lastRefreshToken.ToString());
                 }
-                var res = await ehEmitter.SendAsync(accessToken);
+                var res = await ehEmitter.SendAsync();
                 if (((int)res.StatusCode) >= 400)
                 {
                     _logger.LogError("Error sending custom event with status: {status}", res.StatusCode);
@@ -113,12 +112,6 @@ public class Worker : BackgroundService
             config.CustomMetricInterval = DEFAULT_INTERVAL;
         }
         return config;
-    }    
-
-    private async Task<AccessToken> GetTokenAsync()
-    {        
-        var scope = new string[] { METRICS_SCOPE };
-        return await _defaultCredential.GetTokenAsync(new TokenRequestContext(scope));        
-    }
+    }        
 }
 
