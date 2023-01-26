@@ -18,6 +18,7 @@ More about custom metrics in Azure Monitor check [this article](https://learn.mi
    - User Managed Identity
 - Once decided on the authentication method - the chosen identity should get the following roles:
   - `Monitoring Metrics Publisher` role for Azure Event Hub
+  - `Azure Event Hubs Data Owner` role for Azure Event Hub
   - `Storage Blob Data Reader` for Azure Storage
 
 ## Build and Publish

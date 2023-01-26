@@ -16,7 +16,7 @@ namespace custom_metrics_emitter
 			_config = config;
 		}
 
-		public virtual async Task<HttpResponseMessage> SendAsync(AccessToken accessToken)
+		public virtual async Task<HttpResponseMessage> SendAsync()
 		{
 			await Task.Delay(1);
 			return new HttpResponseMessage(System.Net.HttpStatusCode.NotAcceptable);
