@@ -1,7 +1,6 @@
 ﻿using custom_metrics_emitter;
-using Microsoft.Extensions.Logging;
 
-IHost host = Host.CreateDefaultBuilder(args)    
+IHost host = Host.CreateDefaultBuilder(args)
     .ConfigureServices((hostContext, services) =>
     {
         IConfiguration configuration = hostContext.Configuration;
@@ -15,8 +14,8 @@ IHost host = Host.CreateDefaultBuilder(args)
         {
             opt.AddSimpleConsole(config => config.TimestampFormat = "[HH:mm:ss]");
         });
-            
-    })    
+
+    })
     .Build();
 
 await host.RunAsync();

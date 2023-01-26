@@ -1,34 +1,36 @@
-﻿using System;
+﻿namespace custom_metrics_emitter.emitters;
+
+using Azure.Core;
+using System.Net;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
-using System.Net.Http.Headers;
-using Azure.Core;
 
-namespace custom_metrics_emitter.emitters
+public class EmitterHelper
 {
-	public class EmitterHelper
-	{
-        private static HttpClient _httpClient = new HttpClient();
+    private static readonly HttpClient _httpClient = new();
 
-        const string CustomMetricsUrl = "https://{0}.monitoring.azure.com{1}/metrics";
-
-        public static async Task<HttpResponseMessage> SendCustomMetric(string? region, string? resourceId,
-            EmitterSchema metricToSend, AccessToken accessToken, ILogger<Worker> logger)
+    public static async Task<HttpResponseMessage> SendCustomMetric(string? region, string? resourceId,
+        EmitterSchema metricToSend, AccessToken accessToken, ILogger<Worker> logger, CancellationToken cancellationToken = default)
+    {
+        if ((region != null) && (resourceId != null))
         {
-            if ((region != null) && (resourceId != null))
-            {
-                _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
-                _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));                
-                string uri = string.Format(CustomMetricsUrl, region, resourceId);
-                string jsonString = JsonSerializer.Serialize<EmitterSchema>(metricToSend);
-                logger.LogInformation("SendCustomMetric:{uri} with payload:{payload}", uri, jsonString);
-                StringContent content = new StringContent(jsonString, Encoding.UTF8, "application/json");
-                var response = await _httpClient.PostAsync(uri, content);
-                return response;
-            }
+            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken.Token);
+            _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
-            return new HttpResponseMessage(System.Net.HttpStatusCode.LengthRequired);
+            string uri = $"https://{region}.monitoring.azure.com{resourceId}/metrics";
+            string jsonString = JsonSerializer.Serialize<EmitterSchema>(metricToSend);
+
+            StringContent content = new(
+                content: jsonString,
+                encoding: Encoding.UTF8,
+                mediaType: "application/json");
+
+            logger.LogInformation("SendCustomMetric:{uri} with payload:{payload}", uri, jsonString);
+            var response = await _httpClient.PostAsync(uri, content, cancellationToken);
+            return response;
         }
-    }    
-}
 
+        return new HttpResponseMessage(HttpStatusCode.LengthRequired);
+    }
+}
