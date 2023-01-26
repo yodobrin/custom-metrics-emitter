@@ -53,7 +53,7 @@ namespace custom_metrics_emitter
                    //return authResult.AccessToken;
                    #endregion
                },
-               $"https://login.microsoftonline.com/" + _config.TenantId);
+               $"https://login.microsoftonline.com/{_config.TenantId}");
             
             _eventhubClient = EventHubClient.CreateWithTokenProvider(new Uri(string.Format("sb://{0}.servicebus.windows.net/", _config.EventHubNamespace)),
                 _config.EventHubName, tp);
@@ -95,7 +95,7 @@ namespace custom_metrics_emitter
                 };
             }
 
-            var res = await EmitterHelper.SendCustomMetric(_config.Region, _eventhubresourceId, emitterdata, accessToken);
+            var res = await EmitterHelper.SendCustomMetric(_config.Region, _eventhubresourceId, emitterdata, accessToken, _logger);
             return res;                        
         }
 
