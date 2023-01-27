@@ -13,53 +13,44 @@ public class EventHubEmitter
 {
     private const string LAG_METRIC_NAME = "Lag";
     private const string EVENT_HUB_CUSTOM_METRIC_NAMESPACE = "Event Hub custom metrics";
-    // private const string OWNER_ID = "ownerid";
+
+    // Implementation details from the EventHub .NET SDK
     private const string SEQUENCE_NUMBER = "sequenceNumber";
     private const string OFFSET_KEY = "offset";
-    private const string SERVICE_BUS_HOST_SUFFIX = ".servicebus.windows.net";
-    private const string METRICS_SCOPE = "https://monitor.azure.com/.default";
+    private readonly string _prefix;
+    private string CheckpointBlobName(string partitionId) => $"{_prefix}/checkpoint/{partitionId}";
 
-    private EventHubClient _eventhubClient = default!;
-    private BlobContainerClient _checkpointContainerClient = default!;
-    private AccessToken _metricAccessToken = default!;
+    private const string SERVICE_BUS_HOST_SUFFIX = ".servicebus.windows.net";
+    private const string STORAGE_HOST_SUFFIX = ".blob.core.windows.net";
 
     private readonly ILogger<Worker> _logger;
-    private readonly EmitterConfig _config;
-    private readonly string _checkpointAccountName;
-    private readonly string _checkpointContainerName;
+    private readonly EmitterConfig _cfg;
     private readonly string _eventhubresourceId;
 
-    private readonly string _prefix;
-    // private string OwnershipPrefix() => $"{_prefix}/ownership/";
-    private readonly string _checkpointPrefix;
-    private string CheckpointBlobName(string partitionId) => $"{_checkpointPrefix}{partitionId}";
+    private readonly EmitterHelper _emitter;
+    private readonly EventHubClient _eventhubClient = default!;
+    private readonly BlobContainerClient _checkpointContainerClient = default!;
 
-    public EventHubEmitter(ILogger<Worker> logger, EmitterConfig config)
+    public EventHubEmitter(ILogger<Worker> logger, EmitterConfig config, DefaultAzureCredential defaultCredential)
     {
-        (_logger, _config) = (logger, config);
-        _eventhubresourceId = $"/subscriptions/{config.SubscriptionId}/resourceGroups/{config.ResourceGroup}/providers/Microsoft.EventHub/namespaces/{config.EventHubNamespace}";
-        _checkpointAccountName = config.CheckpointAccountName;
-        _checkpointContainerName = config.CheckpointContainerName;
+        (_logger, _cfg)= (logger, config);
 
-        _prefix = $"{config.EventHubNamespace.ToLowerInvariant()}{SERVICE_BUS_HOST_SUFFIX}/{config.EventHubName.ToLowerInvariant()}/{config.ConsumerGroup.ToLowerInvariant()}";
-        _checkpointPrefix = $"{_prefix}/checkpoint/";
-    }
+        _eventhubresourceId = $"/subscriptions/{_cfg.SubscriptionId}/resourceGroups/{_cfg.ResourceGroup}/providers/Microsoft.EventHub/namespaces/{_cfg.EventHubNamespace}";
+        _prefix = $"{_cfg.EventHubNamespace.ToLowerInvariant()}{SERVICE_BUS_HOST_SUFFIX}/{_cfg.EventHubName.ToLowerInvariant()}/{_cfg.ConsumerGroup.ToLowerInvariant()}";
 
-    public async Task RefreshTokens(DefaultAzureCredential defaultCredential, CancellationToken cancellationToken)
-    {
+        _emitter = new EmitterHelper(_logger, defaultCredential);
+
         _eventhubClient = EventHubClient.CreateWithTokenProvider(
-            endpointAddress: new Uri($"sb://{_config.EventHubNamespace}{SERVICE_BUS_HOST_SUFFIX}/"),
-            entityPath: _config.EventHubName,
+            endpointAddress: new Uri($"sb://{_cfg.EventHubNamespace}{SERVICE_BUS_HOST_SUFFIX}/"),
+            entityPath: _cfg.EventHubName,
             tokenProvider: GetTokenProvider(defaultCredential));
 
         _checkpointContainerClient = new BlobContainerClient(
-            blobContainerUri: new($"https://{_checkpointAccountName}.blob.core.windows.net/{_checkpointContainerName}"),
+            blobContainerUri: new($"https://{_cfg.CheckpointAccountName}{STORAGE_HOST_SUFFIX}/{_cfg.CheckpointContainerName}"),
             credential: defaultCredential);
-
-        _metricAccessToken = await GetTokenAsync(defaultCredential, cancellationToken);
     }
 
-    public async Task<HttpResponseMessage> SendAsync(CancellationToken cancellationToken = default)
+    public async Task<HttpResponseMessage> ReadFromBlobStorageAndPublishToAzureMonitorAsync(CancellationToken cancellationToken = default)
     {
         var totalLag = await GetLagAsync(cancellationToken);
 
@@ -72,17 +63,16 @@ public class EventHubEmitter
                     dimNames: new[] { "EventHubName", "ConsumerGroup", "PartitionId" },
                     series: totalLag.Select((lagInfo, idx) =>
                         new CustomMetricBaseDataSeriesItem(
-                            dimValues: new[] { _config.EventHubName, _config.ConsumerGroup, lagInfo.PartitionId.ToString() },
+                            dimValues: new[] { _cfg.EventHubName, _cfg.ConsumerGroup, lagInfo.PartitionId },
                             min: null, max: null,
                             count: idx + 1,
                             sum: lagInfo.Lag)))));
 
-        return await EmitterHelper.SendCustomMetric(
-            region: _config.Region,
+        return await _emitter.SendCustomMetric(
+            region: _cfg.Region,
             resourceId: _eventhubresourceId,
             metricToSend: emitterdata,
-            accessToken: _metricAccessToken,
-            logger: _logger, cancellationToken: cancellationToken);
+            cancellationToken: cancellationToken);
     }
 
     private async Task<IEnumerable<LagInformation>> GetLagAsync(CancellationToken cancellationToken = default)
@@ -172,27 +162,18 @@ public class EventHubEmitter
     private TokenProvider GetTokenProvider(DefaultAzureCredential defaultCredential)
     {
         return TokenProvider.CreateAzureActiveDirectoryTokenProvider(
-          async (audience, authority, state) =>
-          {
-              var token = await defaultCredential.GetTokenAsync(new Azure.Core.TokenRequestContext(new[] { $"{audience}/.default" }));
-              return token.Token;
+            authority: $"https://login.microsoftonline.com/{_cfg.TenantId}",
+            authCallback: async (audience, authority, state) =>
+            {
+                var token = await defaultCredential.GetTokenAsync(new TokenRequestContext(new[] { $"{audience}/.default" }));
 
-              #region Alternative with spn
-              //IConfidentialClientApplication app = ConfidentialClientApplicationBuilder.Create(APP CLIENT ID)
-              //           .WithAuthority(authority)
-              //           .WithClientSecret(APP CLIENT PASSWORD)
-              //           .Build();
+                return token.Token;
 
-              //var authResult = await app.AcquireTokenForClient(new string[] { $"{audience}/.default" }).ExecuteAsync();
-              //return authResult.AccessToken;
-              #endregion
-          },
-          $"https://login.microsoftonline.com/{_config.TenantId}");
-    }
-
-    private async Task<AccessToken> GetTokenAsync(DefaultAzureCredential defaultCredential, CancellationToken cancellationToken = default)
-    {
-        var scope = new string[] { METRICS_SCOPE };
-        return await defaultCredential.GetTokenAsync(new TokenRequestContext(scope), cancellationToken);
+                #region Alternative with spn
+                //IConfidentialClientApplication app = ConfidentialClientApplicationBuilder.Create(APP CLIENT ID).WithAuthority(authority).WithClientSecret(APP CLIENT PASSWORD).Build();
+                //var authResult = await app.AcquireTokenForClient(new string[] { $"{audience}/.default" }).ExecuteAsync();
+                //return authResult.AccessToken;
+                #endregion
+            });
     }
 }
