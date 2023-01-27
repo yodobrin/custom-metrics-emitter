@@ -86,14 +86,17 @@ public class EmitterHelper
 
         public async Task<string> RefreshAzureMonitorCredentialOnDemand(CancellationToken cancellationToken = default)
         {
-            bool needsNewToken()
+            bool needsNewToken(TimeSpan safetyInterval)
             {
+                // Need a token when we don't have a token
                 if (!_metricAccessToken.HasValue) return true;
-                var minutesUntilExpiry = DateTimeOffset.UtcNow.Subtract(_metricAccessToken.Value.ExpiresOn).TotalMinutes;
-                return minutesUntilExpiry < 5.0;
+
+                // Refresh the token if it expires 'soon'
+                var timeUntilExpiry = _metricAccessToken.Value.ExpiresOn.Subtract(DateTimeOffset.UtcNow);
+                return timeUntilExpiry < safetyInterval;
             }
 
-            if (needsNewToken())
+            if (needsNewToken(safetyInterval: TimeSpan.FromMinutes(5.0)))
             {
                 _metricAccessToken = await _defaultAzureCredential.GetTokenAsync(
                     requestContext: new TokenRequestContext(new[] { _scope }),
