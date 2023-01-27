@@ -12,5 +12,6 @@ public class EmitterConfig
     public string CheckpointAccountName { get; set; } = default!;
     public string CheckpointContainerName { get; set; } = default!;
     public int CustomMetricInterval { get; set; } = default!;
+    public string ManagedIdentityClientId { get; set; } = default!;
 }
 
