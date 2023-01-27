@@ -13,10 +13,23 @@ public class Worker : BackgroundService
     private readonly DefaultAzureCredential _defaultCredential;
     // private static readonly HttpClient _httpClient = new HttpClient();
 
-    public Worker(ILogger<Worker> logger, IConfiguration configuration)
+    public Worker(ILogger<Worker> logger, IConfiguration cfg)
     {
         _logger = logger;
-        _emitterConfig = ReadConfiguration(configuration);
+
+        _emitterConfig = new(
+            EventHubNamespace: cfg.require("EventHubNamespace"),
+            EventHubName: cfg.require("EventHubName"),
+            ConsumerGroup: cfg.require("ConsumerGroup"),
+            CheckpointAccountName: cfg.require("CheckpointAccountName"),
+            CheckpointContainerName: cfg.require("CheckpointContainerName"),
+            Region: cfg.require("Region"),
+            TenantId: cfg.require("TenantId"),
+            SubscriptionId: cfg.require("SubscriptionId"),
+            ResourceGroup: cfg.require("ResourceGroup"),
+            ManagedIdentityClientId: cfg.optional("ManagedIdentityClientId"),
+            CustomMetricInterval: cfg.getIntOrDefault("CustomMetricInterval", DEFAULT_INTERVAL));
+
         _defaultCredential = string.IsNullOrEmpty(_emitterConfig.ManagedIdentityClientId)
             ? new DefaultAzureCredential()
             : new DefaultAzureCredential(options: new (){ ManagedIdentityClientId = _emitterConfig.ManagedIdentityClientId });
@@ -55,37 +68,22 @@ public class Worker : BackgroundService
             _logger.LogError("{error}", ex.ToString());
         }
     }
+}
 
-    private static EmitterConfig ReadConfiguration(IConfiguration cfg)
+internal static class IConfigurationExtensions
+{
+    internal static string optional(this IConfiguration cfg, string name) => cfg.GetValue<string>(name) ?? string.Empty;
+
+    internal static string require(this IConfiguration cfg, string name)
     {
-        string optional(string name) => cfg.GetValue<string>(name) ?? string.Empty;
-
-        string require(string name)
+        var val = cfg.optional(name);
+        if (string.IsNullOrEmpty(val))
         {
-            var val = optional(name);
-            if (string.IsNullOrEmpty(val))
-            {
-                throw new ArgumentException($"Configuration error, missing key {name}", nameof(cfg));
-            }
-            return val;
+            throw new ArgumentException($"Configuration error, missing key {name}", nameof(cfg));
         }
-
-        int getIntOrDefault(string name, int defaulT) =>
-            !string.IsNullOrEmpty(cfg.GetValue<string>(name)) && int.TryParse(cfg.GetValue<string>(name), out int value) ? value : defaulT;
-
-        return new()
-        {
-            EventHubNamespace = require("EventHubNamespace"),
-            EventHubName = require("EventHubName"),
-            ConsumerGroup = require("ConsumerGroup"),
-            CheckpointAccountName = require("CheckpointAccountName"),
-            CheckpointContainerName = require("CheckpointContainerName"),
-            Region = require("Region"),
-            TenantId = require("TenantId"),
-            SubscriptionId = require("SubscriptionId"),
-            ResourceGroup = require("ResourceGroup"),
-            ManagedIdentityClientId = optional("ManagedIdentityClientId"),
-            CustomMetricInterval = getIntOrDefault("CustomMetricInterval", DEFAULT_INTERVAL),
-        };
+        return val;
     }
+
+    internal static int getIntOrDefault(this IConfiguration cfg, string name, int defaulT) =>
+        !string.IsNullOrEmpty(cfg.GetValue<string>(name)) && int.TryParse(cfg.GetValue<string>(name), out int value) ? value : defaulT;
 }

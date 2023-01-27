@@ -11,15 +11,6 @@ public class EmitterHelper
 {
     private static readonly HttpClient _httpClient = new();
 
-    private static JsonSerializerOptions CreateJsonOptions()
-    {
-        JsonSerializerOptions options = new() { WriteIndented = false };
-        options.Converters.Add(new SortableDateTimeConverter());
-        return options;
-    }
-
-    private static JsonSerializerOptions _jsonOptions = CreateJsonOptions();
-
     public static Task<HttpResponseMessage> SendCustomMetric(string? region, string? resourceId,
         EmitterSchema metricToSend, AccessToken accessToken, ILogger<Worker> logger, CancellationToken cancellationToken = default)
     {
@@ -42,6 +33,15 @@ public class EmitterHelper
         }
 
         return Task.FromResult(new HttpResponseMessage(HttpStatusCode.LengthRequired));
+    }
+
+    private static JsonSerializerOptions _jsonOptions = CreateJsonOptions();
+
+    private static JsonSerializerOptions CreateJsonOptions()
+    {
+        JsonSerializerOptions options = new() { WriteIndented = false };
+        options.Converters.Add(new SortableDateTimeConverter());
+        return options;
     }
 
     private class SortableDateTimeConverter : JsonConverter<DateTime>
