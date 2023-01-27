@@ -7,7 +7,7 @@ using Azure.Storage.Blobs.Models;
 using custom_metrics_emitter.emitters;
 using Microsoft.Azure.EventHubs;
 
-internal record LagInformation(int PartitionId, long Lag);
+internal record LagInformation(string PartitionId, long Lag);
 
 public class EventHubEmitter
 {
@@ -69,7 +69,7 @@ public class EventHubEmitter
                 baseData: new CustomMetricBaseData(
                     metric: LAG_METRIC_NAME,
                     Namespace: EVENT_HUB_CUSTOM_METRIC_NAMESPACE,
-                    dimNames: new string[3] { "EventHubName", "ConsumerGroup", "PartitionId" },
+                    dimNames: new[] { "EventHubName", "ConsumerGroup", "PartitionId" },
                     series: totalLag.Select((lagInfo, idx) =>
                         new CustomMetricBaseDataSeriesItem(
                             dimValues: new[] { _config.EventHubName, _config.ConsumerGroup, lagInfo.PartitionId.ToString() },
@@ -92,9 +92,12 @@ public class EventHubEmitter
         EventHubRuntimeInformation ehInfo = await _eventhubClient.GetRuntimeInformationAsync();
 
         // Query all partitions in parallel
-        var tasks = ehInfo.PartitionIds
-            .Select(partitionId => (PartitionId: int.Parse(partitionId), Task: LagInPartition(partitionId, cancellationToken)));
-        await Task.WhenAll(tasks.Select(i => i.Task).ToArray());
+        var tasks = ehInfo.PartitionIds.Select(
+            partitionId => (
+                PartitionId: partitionId,
+                Task: LagInPartition(partitionId, cancellationToken)
+            ));
+        await Task.WhenAll(tasks.Select(i => i.Task));
 
         return tasks
             .Select(x => new LagInformation(x.PartitionId, x.Task.Result))

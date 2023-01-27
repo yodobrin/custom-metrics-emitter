@@ -16,11 +16,11 @@ public record CustomMetricData(
 public record CustomMetricBaseData(
     string? metric,
     string? Namespace,
-    string[]? dimNames,
+    IEnumerable<string>? dimNames,
     IEnumerable<CustomMetricBaseDataSeriesItem>? series);
 
 public record CustomMetricBaseDataSeriesItem(
-    string[]? dimValues,
+    IEnumerable<string>? dimValues,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? min,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? max,
     [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? sum,
