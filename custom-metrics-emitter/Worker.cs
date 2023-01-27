@@ -58,35 +58,34 @@ public class Worker : BackgroundService
 
     private static EmitterConfig ReadConfiguration(IConfiguration cfg)
     {
-        EmitterConfig config = new()
+        string optional(string name) => cfg.GetValue<string>(name) ?? string.Empty;
+
+        string require(string name)
         {
-            EventHubNamespace = cfg.GetValue<string>("EventHubNamespace") ?? string.Empty,
-            EventHubName = cfg.GetValue<string>("EventHubName") ?? string.Empty,
-            ConsumerGroup = cfg.GetValue<string>("ConsumerGroup") ?? string.Empty,
-            CheckpointAccountName = cfg.GetValue<string>("CheckpointAccountName") ?? string.Empty,
-            CheckpointContainerName = cfg.GetValue<string>("CheckpointContainerName") ?? string.Empty,
-            Region = cfg.GetValue<string>("Region") ?? string.Empty,
-            TenantId = cfg.GetValue<string>("TenantId") ?? string.Empty,
-            SubscriptionId = cfg.GetValue<string>("SubscriptionId") ?? string.Empty,
-            ResourceGroup = cfg.GetValue<string>("ResourceGroup") ?? string.Empty,
-            ManagedIdentityClientId = cfg.GetValue<string>("ManagedIdentityClientId") ?? string.Empty,
-            CustomMetricInterval = DEFAULT_INTERVAL,
+            var val = optional(name);
+            if (string.IsNullOrEmpty(val))
+            {
+                throw new ArgumentException($"Configuration error, missing key {name}", nameof(cfg));
+            }
+            return val;
+        }
+
+        int getIntOrDefault(string name, int defaulT) =>
+            !string.IsNullOrEmpty(cfg.GetValue<string>(name)) && int.TryParse(cfg.GetValue<string>(name), out int value) ? value : defaulT;
+
+        return new()
+        {
+            EventHubNamespace = require("EventHubNamespace"),
+            EventHubName = require("EventHubName"),
+            ConsumerGroup = require("ConsumerGroup"),
+            CheckpointAccountName = require("CheckpointAccountName"),
+            CheckpointContainerName = require("CheckpointContainerName"),
+            Region = require("Region"),
+            TenantId = require("TenantId"),
+            SubscriptionId = require("SubscriptionId"),
+            ResourceGroup = require("ResourceGroup"),
+            ManagedIdentityClientId = optional("ManagedIdentityClientId"),
+            CustomMetricInterval = getIntOrDefault("CustomMetricInterval", DEFAULT_INTERVAL),
         };
-
-        if ((string.IsNullOrEmpty(config.EventHubNamespace)) || (string.IsNullOrEmpty(config.EventHubName))
-            || (string.IsNullOrEmpty(config.ConsumerGroup)) || (string.IsNullOrEmpty(config.CheckpointAccountName))
-            || (string.IsNullOrEmpty(config.CheckpointContainerName)) || (string.IsNullOrEmpty(config.Region))
-            || (string.IsNullOrEmpty(config.TenantId)) || (string.IsNullOrEmpty(config.SubscriptionId)) || (string.IsNullOrEmpty(config.ResourceGroup)))
-        {
-            throw new Exception("Configuration error, missing values");
-        }
-
-        if (cfg.GetValue<string>("CustomMetricInterval") != null &&
-            int.TryParse(cfg.GetValue<string>("CustomMetricInterval"), out int interval))
-        {
-            config.CustomMetricInterval = interval;
-        }
-
-        return config;
     }
 }

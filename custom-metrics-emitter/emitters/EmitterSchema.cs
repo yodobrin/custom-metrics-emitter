@@ -2,38 +2,28 @@
 
 using System.Text.Json.Serialization;
 
-public class EmitterSchema
-{
-    public DateTime time { get; set; }
-    public CustomMetricData? data { get; set; }
-}
+// https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/metrics-store-custom-rest-api
 
-public class CustomMetricData
-{
-    public CustomMetricBaseData? baseData { get; set; }
-}
+#pragma warning disable IDE1006 // Naming Styles
 
-public class CustomMetricBaseData
-{
-    public string? metric { get; set; }
-    public string? Namespace { get; set; }
-    public string[]? dimNames { get; set; }
-    public CustomMetricBaseDataSeriesItem[]? series { get; set; }
-}
+public record EmitterSchema(
+    DateTime time,
+    CustomMetricData? data);
 
-public class CustomMetricBaseDataSeriesItem
-{
-    public string[]? dimValues { get; set; }
+public record CustomMetricData(
+    CustomMetricBaseData? baseData);
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public long? min { get; set; }
+public record CustomMetricBaseData(
+    string? metric,
+    string? Namespace,
+    string[]? dimNames,
+    IEnumerable<CustomMetricBaseDataSeriesItem>? series);
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public long? max { get; set; }
+public record CustomMetricBaseDataSeriesItem(
+    string[]? dimValues,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? min,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? max,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? sum,
+    [property: JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)] long? count);
 
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public long? sum { get; set; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public long? count { get; set; }
-}
+#pragma warning restore IDE1006 // Naming Styles
