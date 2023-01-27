@@ -37,7 +37,7 @@ public class EmitterHelper
 
     private static JsonSerializerOptions _jsonOptions = CreateJsonOptions();
 
-    private static JsonSerializerOptions CreateJsonOptions()
+    internal static JsonSerializerOptions CreateJsonOptions()
     {
         JsonSerializerOptions options = new() { WriteIndented = false };
         options.Converters.Add(new SortableDateTimeConverter());
@@ -50,7 +50,7 @@ public class EmitterHelper
 
         public override void Write(Utf8JsonWriter writer, DateTime date, JsonSerializerOptions options)
         {
-            writer.WriteStringValue(date.ToString(format));
+            writer.WriteStringValue(date.ToUniversalTime().ToString(format));
         }
         public override DateTime Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
         {
