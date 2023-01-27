@@ -4,33 +4,42 @@ using Azure.Identity;
 
 public class Worker : BackgroundService
 {
+    private static readonly TimeSpan ONE_HOUR = TimeSpan.FromHours(1);
+    private const int DEFAULT_INTERVAL = 10_000;
+
     private DateTime _lastRefreshToken = DateTime.MinValue;
-    private readonly TimeSpan ONE_HOUR = TimeSpan.FromHours(1);
-    private readonly int DEFAULT_INTERVAL = 10000;
     private readonly ILogger<Worker> _logger;
-    private readonly IConfiguration _config;
+    private readonly EmitterConfig _emitterConfig;
     private readonly DefaultAzureCredential _defaultCredential;
     // private static readonly HttpClient _httpClient = new HttpClient();
 
-    public Worker(ILogger<Worker> logger, IConfiguration configuration)
+    public Worker(ILogger<Worker> logger, IConfiguration cfg)
     {
         _logger = logger;
-        _config = configuration;
 
-        //set managedidenity specific clientid
-        if (!string.IsNullOrEmpty(_config["ManagedIdentityClientId"]))
-            _defaultCredential = new DefaultAzureCredential(
-                new DefaultAzureCredentialOptions { ManagedIdentityClientId = _config["ManagedIdentityClientId"] });
-        else
-            _defaultCredential = new DefaultAzureCredential();
+        _emitterConfig = new(
+            EventHubNamespace: cfg.require("EventHubNamespace"),
+            EventHubName: cfg.require("EventHubName"),
+            ConsumerGroup: cfg.require("ConsumerGroup"),
+            CheckpointAccountName: cfg.require("CheckpointAccountName"),
+            CheckpointContainerName: cfg.require("CheckpointContainerName"),
+            Region: cfg.require("Region"),
+            TenantId: cfg.require("TenantId"),
+            SubscriptionId: cfg.require("SubscriptionId"),
+            ResourceGroup: cfg.require("ResourceGroup"),
+            ManagedIdentityClientId: cfg.optional("ManagedIdentityClientId"),
+            CustomMetricInterval: cfg.getIntOrDefault("CustomMetricInterval", DEFAULT_INTERVAL));
+
+        _defaultCredential = string.IsNullOrEmpty(_emitterConfig.ManagedIdentityClientId)
+            ? new DefaultAzureCredential()
+            : new DefaultAzureCredential(options: new (){ ManagedIdentityClientId = _emitterConfig.ManagedIdentityClientId });
     }
 
     protected override async Task ExecuteAsync(CancellationToken cancellationToken = default)
     {
         try
         {
-            var emitterConfig = ReadConfiguration();
-            EventHubEmitter ehEmitter = new(_logger, emitterConfig);
+            EventHubEmitter ehEmitter = new(_logger, _emitterConfig);
 
             while (!cancellationToken.IsCancellationRequested)
             {
@@ -51,7 +60,7 @@ public class Worker : BackgroundService
                 {
                     _logger.LogInformation("Send Custom Metric end with status: {status}", res.StatusCode);
                 }
-                await Task.Delay(emitterConfig.CustomMetricInterval, cancellationToken);
+                await Task.Delay(_emitterConfig.CustomMetricInterval, cancellationToken);
             }
         }
         catch (Exception ex)
@@ -59,37 +68,22 @@ public class Worker : BackgroundService
             _logger.LogError("{error}", ex.ToString());
         }
     }
+}
 
-    private EmitterConfig ReadConfiguration()
+internal static class IConfigurationExtensions
+{
+    internal static string optional(this IConfiguration cfg, string name) => cfg.GetValue<string>(name) ?? string.Empty;
+
+    internal static string require(this IConfiguration cfg, string name)
     {
-        EmitterConfig config = new()
+        var val = cfg.optional(name);
+        if (string.IsNullOrEmpty(val))
         {
-            EventHubNamespace = _config.GetValue<string>("EventHubNamespace") ?? string.Empty,
-            EventHubName = _config.GetValue<string>("EventHubName") ?? string.Empty,
-            ConsumerGroup = _config.GetValue<string>("ConsumerGroup") ?? string.Empty,
-            CheckpointAccountName = _config.GetValue<string>("CheckpointAccountName") ?? string.Empty,
-            CheckpointContainerName = _config.GetValue<string>("CheckpointContainerName") ?? string.Empty,
-            Region = _config.GetValue<string>("Region") ?? string.Empty,
-            TenantId = _config.GetValue<string>("TenantId") ?? string.Empty,
-            SubscriptionId = _config.GetValue<string>("SubscriptionId") ?? string.Empty,
-            ResourceGroup = _config.GetValue<string>("ResourceGroup") ?? string.Empty,
-            CustomMetricInterval = DEFAULT_INTERVAL,
-        };
-
-        if ((string.IsNullOrEmpty(config.EventHubNamespace)) || (string.IsNullOrEmpty(config.EventHubName))
-            || (string.IsNullOrEmpty(config.ConsumerGroup)) || (string.IsNullOrEmpty(config.CheckpointAccountName))
-            || (string.IsNullOrEmpty(config.CheckpointContainerName)) || (string.IsNullOrEmpty(config.Region))
-            || (string.IsNullOrEmpty(config.TenantId)) || (string.IsNullOrEmpty(config.SubscriptionId)) || (string.IsNullOrEmpty(config.ResourceGroup)))
-        {
-            throw new Exception("Configuration error, missing values");
+            throw new ArgumentException($"Configuration error, missing key {name}", nameof(cfg));
         }
-
-        if (_config.GetValue<string>("CustomMetricInterval") != null &&
-            int.TryParse(_config.GetValue<string>("CustomMetricInterval"), out int interval))
-        {
-            config.CustomMetricInterval = interval;
-        }
-
-        return config;
+        return val;
     }
+
+    internal static int getIntOrDefault(this IConfiguration cfg, string name, int defaulT) =>
+        !string.IsNullOrEmpty(cfg.GetValue<string>(name)) && int.TryParse(cfg.GetValue<string>(name), out int value) ? value : defaulT;
 }
