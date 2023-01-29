@@ -13,13 +13,9 @@ More about custom metrics in Azure Monitor check [this article](https://learn.mi
    2.  Azure Storage
    3.  Azure Application Insights (optional)
 2. Producer and Consumer sample application for Azure Event hub [code example](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-dotnet-standard-getstarted-send?tabs=passwordless%2Croles-azure-portal)
-3. Decide on one of the two options for authentication:
-   - Service Principal (Azure AD -App Registration)
-   - User Managed Identity
-- Once decided on the authentication method - the chosen identity should get the following roles:
-  - `Monitoring Metrics Publisher` role for Azure Event Hub
-  - `Azure Event Hubs Data Owner` role for Azure Event Hub
-  - `Storage Blob Data Reader` for Azure Storage
+
+
+
 
 ## Build and Publish
 The solution can be deployed on either Azure Container App or any other Azure service which able to host container solution and has User Managed Identity support (in case this is the selected authentication method - see above).
@@ -52,3 +48,55 @@ Example of running the docker image locally:
 Example of json schema which send a custom metric can be found [here](test/custom1.json)
 As the schema also include the partition number as one of the dimensions - we can have a view of unprocessed events per partition:
 ![image](design/view.png)
+
+
+## Step by step deployment 
+
+This solution is aimed for customers/users who already have an Azure Event Hub and want to monitor the lag of a specific consumer group. Please follow the pre-requisites below before deploying the solution. see [here](#Pre-requisite) for more details. The users running the solution will need to have the Contributor role on the resource group where the solution is deployed. (at least)
+
+1. Clone this repository to a local directory
+
+2. Navigate to the directory where the repository was cloned, and to deploy/bicep folder
+
+3. Modify the params.json file to include the required parameters for the deployment (see below for more details)
+
+4. Run the following command to deploy the solution:
+
+   `az deployment group create --resource-group <resource group name> --template-file main.bicep --parameters @params.json`
+
+5. Once completed successfully, the solution will be deployed and running.
+
+
+### Configuring Bicep to deploy the solution
+
+The solution can be deployed using Bicep, the following files are included:
+
+- `main.bicep` - main bicep file which deploy the solution
+
+- `parameters.json` - parameters file which include the required parameters for the deployment
+
+- `aca.bicep` - bicep file which deploy the Azure Container App
+
+- `roles.bicep` - bicep file which deploy the required roles for the solution
+
+The following parameters should be set, these are subset of the environment variables which need to be set when running the docker image. The other items are either derived or created during the deployment process.
+
+- EventHubNamespace - This is the namespace of your eventhub
+
+- EventHubName - This is the name of your eventhub you wish to monitor within the namespace
+
+- CheckpointAccountName - This is the name of the storage account where the checkpoints are stored
+
+- CheckpointContainerName - This is the name of the container within the storage account where the checkpoints are stored
+
+- CustomMetricInterval - an optional value, this is the interval in milliseconds between each metric being sent to Azure Monitor. 
+
+- managedIdentityName - As part of the deployment, a user assigned managed identity will be created. This is the name of that identity. It will be used as the identity for the container app. This identity will be granted the required roles for the solution to work. These are the roles:
+
+  - `Monitoring Metrics Publisher` role for Azure Event Hub
+
+  - `Azure Event Hubs Data Owner` role for Azure Event Hub
+
+  - `Storage Blob Data Reader` for Azure Storage
+
+
