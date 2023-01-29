@@ -1,6 +1,6 @@
 # Custom-Metrics-Emitter
 
-This sample project show how to implement sending a custom metric events to Azure Event Hub. Specifically, we will calculate the unprocessed events (The Lag) of specific consumer group in event hub. This metric is not available in event hub standard metrics for now. More about custom metrics in Azure Monitor check [this article](https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/metrics-custom-overview)
+This sample project show how to implement sending a custom metric events to Azure Event Hub. Specifically, we will calculate the unprocessed events (The Lag) of specific consumer group in event hub. More about custom metrics in Azure Monitor check [this article](https://learn.microsoft.com/en-us/azure/azure-monitor/essentials/metrics-custom-overview)
 
 
 ## Table of Contents
@@ -24,7 +24,7 @@ When using Azure Event Hub, it is important to monitor the lag of the consumer g
 
 ![image](design/design.png)
 
-The solution will create the required resources and deploy the solution on Azure Container App. The solution will run as a container and will send a custom metric to Azure Monitor. The custom metric will include the following dimensions:
+The solution will create the required resources and deploy the solution on Azure Container App. The solution will run as a Azure Container App and will send a custom metric to Azure Monitor. The custom metric will include the following dimensions:
 
 - Eventhub name (the topic)
 
@@ -40,7 +40,7 @@ The resources that will be created are:
 
 - Managed Identity - this is the identity which will be used by the container app to authenticate to Azure Event Hub and Azure Storage
 
-- Role assignments - this is the role assignments which will be assigned to the managed identity to allow it to read the checkpoints from Azure Storage and send the custom metric to Azure Monitor
+- Role assignments - these are the role assignments which will be assigned to the managed identity to allow it to read the checkpoints from Azure Storage and send the custom metric to Azure Monitor
 
 ### Custom Metric
 
@@ -92,17 +92,17 @@ The solution can be deployed using Bicep, the following files are included:
 
 The following parameters should be set, these are subset of the environment variables which need to be set when running the docker image. The other items are either derived or created during the deployment process.
 
-- EventHubNamespace - This is the namespace of your eventhub
+- `EventHubNamespace` - This is the namespace of your eventhub
 
-- EventHubName - This is the name of your eventhub you wish to monitor within the namespace
+- `EventHubName` - This is the name of your eventhub you wish to monitor within the namespace
 
-- CheckpointAccountName - This is the name of the storage account where the checkpoints are stored
+- `CheckpointAccountName` - This is the name of the storage account where the checkpoints are stored
 
-- CheckpointContainerName - This is the name of the container within the storage account where the checkpoints are stored
+- `CheckpointContainerName` - This is the name of the container within the storage account where the checkpoints are stored
 
-- CustomMetricInterval - an optional value, this is the interval in milliseconds between each metric being sent to Azure Monitor. 
+- `CustomMetricInterval` - an optional value, this is the interval in milliseconds between each metric being sent to Azure Monitor. 
 
-- managedIdentityName - As part of the deployment, a user assigned managed identity will be created. This is the name of that identity. It will be used as the identity for the container app. This identity will be granted the required roles for the solution to work. These are the roles:
+- `managedIdentityName` - As part of the deployment, a user assigned managed identity will be created. This is the name of that identity. It will be used as the identity for the container app. This identity will be granted the required roles for the solution to work. These are the roles:
 
   - `Monitoring Metrics Publisher` role for Azure Event Hub
 
