@@ -1,2 +1,3 @@
 .vs
 
+deploy/bicep/param_local.json
