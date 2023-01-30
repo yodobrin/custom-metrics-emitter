@@ -30,8 +30,9 @@ public class EventHubEmitter
     private AccessToken? _eventhubAccessToken = null;
 
     private readonly EmitterHelper _emitter;
+    private readonly BlobContainerClient _checkpointContainerClient = default!;
     private EventHubClient _eventhubClient = default!;
-    private BlobContainerClient _checkpointContainerClient = default!;
+   
 
     public EventHubEmitter(ILogger<Worker> logger, EmitterConfig config, DefaultAzureCredential defaultCredential)
     {
@@ -41,19 +42,17 @@ public class EventHubEmitter
         _prefix = $"{_cfg.EventHubNamespace.ToLowerInvariant()}{SERVICE_BUS_HOST_SUFFIX}/{_cfg.EventHubName.ToLowerInvariant()}/{_cfg.ConsumerGroup.ToLowerInvariant()}";
 
         _emitter = new EmitterHelper(_logger, defaultCredential);
-    }
-
-    private void CreateAzureServicesClients(CancellationToken cancellationToken)
-    {
-        _eventhubClient = EventHubClient.CreateWithTokenProvider(
-            endpointAddress: new Uri($"sb://{_cfg.EventHubNamespace}{SERVICE_BUS_HOST_SUFFIX}/"),
-            entityPath: _cfg.EventHubName,
-            tokenProvider: GetTokenProvider(_defaultAzureCredential, cancellationToken));
-
-        //we assume the blob container client need to re-create as part of the eventhub client re-create
         _checkpointContainerClient = new BlobContainerClient(
             blobContainerUri: new($"https://{_cfg.CheckpointAccountName}{STORAGE_HOST_SUFFIX}/{_cfg.CheckpointContainerName}"),
             credential: _defaultAzureCredential);
+    }
+
+    private void CreateEventHubClient(CancellationToken cancellationToken)
+    {        
+        _eventhubClient = EventHubClient.CreateWithTokenProvider(
+            endpointAddress: new Uri($"sb://{_cfg.EventHubNamespace}{SERVICE_BUS_HOST_SUFFIX}/"),
+            entityPath: _cfg.EventHubName,
+            tokenProvider: GetTokenProvider(_defaultAzureCredential, cancellationToken));        
     }
 
     public async Task<HttpResponseMessage> ReadFromBlobStorageAndPublishToAzureMonitorAsync(CancellationToken cancellationToken = default)
@@ -61,7 +60,7 @@ public class EventHubEmitter
         if ((!_eventhubAccessToken.HasValue) ||
                 (_eventhubAccessToken.Value.ExpiresOn.Subtract(DateTimeOffset.UtcNow) < TimeSpan.FromMinutes(5.0)))
         {
-            CreateAzureServicesClients(cancellationToken);       
+            CreateEventHubClient(cancellationToken);       
         }
 
         var totalLag = await GetLagAsync(cancellationToken);
