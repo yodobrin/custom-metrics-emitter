@@ -3,25 +3,28 @@
 using Azure.Core;
 using Azure.Identity;
 using Microsoft.Extensions.Logging;
+using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
+public record AccessTokenAndExpiration(bool isExpired, string token);
+
 public class EmitterHelper
 {
     private static readonly HttpClient _httpClient = new();
     private readonly ILogger<Worker> _logger;
-    private readonly TokenUpdater _TokenUpdater;
+    private readonly TokenStore _TokenStore;
 
     public EmitterHelper(ILogger<Worker> logger, DefaultAzureCredential defaultAzureCredential)
     {
         _logger = logger;
-        _TokenUpdater = new TokenUpdater(
-            defaultAzureCredential,
-            scope: "https://monitor.azure.com/.default");
-    }
+        _TokenStore = new TokenStore(
+            defaultAzureCredential);
+    }  
 
     public async Task<HttpResponseMessage> SendCustomMetric(
         string? region, string? resourceId, EmitterSchema metricToSend,
@@ -29,8 +32,8 @@ public class EmitterHelper
     {
         if ((region != null) && (resourceId != null))
         {
-            var accessToken = await _TokenUpdater.RefreshAzureMonitorCredentialOnDemand(cancellationToken);
-            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            var record = await _TokenStore.RefreshAzureMonitorCredentialOnDemandAsync(cancellationToken);
+            _httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", record.token);
             _httpClient.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
             string uri = $"https://{region}.monitoring.azure.com{resourceId}/metrics";
@@ -47,6 +50,17 @@ public class EmitterHelper
         }
 
         return new HttpResponseMessage(HttpStatusCode.LengthRequired);
+    }
+
+    public Task<AccessTokenAndExpiration> RefreshAzureEventHubCredentialOnDemandAsync(CancellationToken cancellationToken = default)
+    {
+        return _TokenStore.RefreshAzureEventHubCredentialOnDemandAsync(cancellationToken);
+    }
+
+    public Task<AccessTokenAndExpiration> RefreshCredentialOnDemandAsync(string audience,
+        CancellationToken cancellationToken = default)
+    {
+        return _TokenStore.RefreshCredentialOnDemand(audience, cancellationToken);
     }
 
     private static JsonSerializerOptions _jsonOptions = CreateJsonOptions();
@@ -72,38 +86,66 @@ public class EmitterHelper
         }
     }
 
-    private class TokenUpdater
+    private class TokenStore
     {
-        private readonly DefaultAzureCredential _defaultAzureCredential;
-        private readonly string _scope;
+        private static readonly string MONITOR_SCOPE = "https://monitor.azure.com/.default";
+        private static readonly string EVENTHUBS_SCOPE = "https://eventhubs.azure.net/.default";
 
-        public TokenUpdater(DefaultAzureCredential defaultAzureCredential, string scope)
+        private readonly DefaultAzureCredential _defaultAzureCredential;
+        private ConcurrentDictionary<string, AccessToken?> _scopeAndTokens = new();
+
+
+        public TokenStore(DefaultAzureCredential defaultAzureCredential)
         {
-            (_defaultAzureCredential, _scope) = (defaultAzureCredential, scope);
+            (_defaultAzureCredential) = (defaultAzureCredential);
+            RefreshAzureMonitorCredentialOnDemand();
+            RefreshAzureEventHubCredentialOnDemand();
         }
 
-        private AccessToken? _metricAccessToken = null;
+        public Task<AccessTokenAndExpiration> RefreshAzureMonitorCredentialOnDemandAsync(CancellationToken cancellationToken = default)
+        {
+            return RefreshCredentialOnDemand(MONITOR_SCOPE, cancellationToken);
+        }
 
-        public async Task<string> RefreshAzureMonitorCredentialOnDemand(CancellationToken cancellationToken = default)
+        public Task<AccessTokenAndExpiration> RefreshAzureEventHubCredentialOnDemandAsync(CancellationToken cancellationToken = default)
+        {
+            return RefreshCredentialOnDemand(EVENTHUBS_SCOPE, cancellationToken);
+        }
+
+        public AccessTokenAndExpiration RefreshAzureMonitorCredentialOnDemand(CancellationToken cancellationToken = default)
+        {
+            return RefreshCredentialOnDemand(MONITOR_SCOPE, cancellationToken).Result;
+        }
+
+        public AccessTokenAndExpiration RefreshAzureEventHubCredentialOnDemand(CancellationToken cancellationToken = default)
+        {
+            return RefreshCredentialOnDemand(EVENTHUBS_SCOPE, cancellationToken).Result;
+        }
+
+        public async Task<AccessTokenAndExpiration> RefreshCredentialOnDemand(string scope, CancellationToken cancellationToken = default)
         {
             bool needsNewToken(TimeSpan safetyInterval)
             {
-                // Need a token when we don't have a token
-                if (!_metricAccessToken.HasValue) return true;
-
-                // Refresh the token if it expires 'soon'
-                var timeUntilExpiry = _metricAccessToken.Value.ExpiresOn.Subtract(DateTimeOffset.UtcNow);
-                return timeUntilExpiry < safetyInterval;
+                AccessToken? token;
+                if (_scopeAndTokens.TryGetValue(scope, out token))
+                {
+                    if (!token.HasValue) return true;
+                    var timeUntilExpiry = token!.Value.ExpiresOn.Subtract(DateTimeOffset.UtcNow);
+                    return timeUntilExpiry < safetyInterval;
+                }
+                return true;
             }
 
-            if (needsNewToken(safetyInterval: TimeSpan.FromMinutes(5.0)))
+            var isExpired = needsNewToken(safetyInterval: TimeSpan.FromMinutes(5.0));
+
+            if (isExpired)
             {
-                _metricAccessToken = await _defaultAzureCredential.GetTokenAsync(
-                    requestContext: new TokenRequestContext(new[] { _scope }),
-                    cancellationToken: cancellationToken);
+                _scopeAndTokens.TryAdd(scope, await _defaultAzureCredential.GetTokenAsync(
+                    requestContext: new TokenRequestContext(new[] { scope }),
+                    cancellationToken: cancellationToken));
             }
 
-            return _metricAccessToken!.Value.Token;
+            return new AccessTokenAndExpiration(isExpired, _scopeAndTokens[scope]!.Value.Token);
         }
     }
 }
