@@ -28,30 +28,40 @@ public class EventHubEmitter
     private readonly string _eventhubresourceId;
 
     private readonly EmitterHelper _emitter;
-    private readonly EventHubClient _eventhubClient = default!;
     private readonly BlobContainerClient _checkpointContainerClient = default!;
+    private EventHubClient _eventhubClient = default!;
+   
 
     public EventHubEmitter(ILogger<Worker> logger, EmitterConfig config, DefaultAzureCredential defaultCredential)
     {
-        (_logger, _cfg)= (logger, config);
+        (_logger, _cfg) = (logger, config);
 
         _eventhubresourceId = $"/subscriptions/{_cfg.SubscriptionId}/resourceGroups/{_cfg.ResourceGroup}/providers/Microsoft.EventHub/namespaces/{_cfg.EventHubNamespace}";
         _prefix = $"{_cfg.EventHubNamespace.ToLowerInvariant()}{SERVICE_BUS_HOST_SUFFIX}/{_cfg.EventHubName.ToLowerInvariant()}/{_cfg.ConsumerGroup.ToLowerInvariant()}";
 
         _emitter = new EmitterHelper(_logger, defaultCredential);
-
-        _eventhubClient = EventHubClient.CreateWithTokenProvider(
-            endpointAddress: new Uri($"sb://{_cfg.EventHubNamespace}{SERVICE_BUS_HOST_SUFFIX}/"),
-            entityPath: _cfg.EventHubName,
-            tokenProvider: GetTokenProvider(defaultCredential));
-
         _checkpointContainerClient = new BlobContainerClient(
             blobContainerUri: new($"https://{_cfg.CheckpointAccountName}{STORAGE_HOST_SUFFIX}/{_cfg.CheckpointContainerName}"),
             credential: defaultCredential);
+        CreateEventHubClient();
+    }
+
+    private void CreateEventHubClient(CancellationToken cancellationToken = default)
+    {        
+        _eventhubClient = EventHubClient.CreateWithTokenProvider(
+            endpointAddress: new Uri($"sb://{_cfg.EventHubNamespace}{SERVICE_BUS_HOST_SUFFIX}/"),
+            entityPath: _cfg.EventHubName,
+            tokenProvider: GetTokenProvider(cancellationToken));        
     }
 
     public async Task<HttpResponseMessage> ReadFromBlobStorageAndPublishToAzureMonitorAsync(CancellationToken cancellationToken = default)
     {
+        var refreshAction = await _emitter.RefreshAzureEventHubCredentialOnDemandAsync(cancellationToken: cancellationToken);
+        if (refreshAction.isExpired == true)        
+        {
+            CreateEventHubClient(cancellationToken);       
+        }
+
         var totalLag = await GetLagAsync(cancellationToken);
 
         var emitterdata = new EmitterSchema(
@@ -159,15 +169,15 @@ public class EventHubEmitter
         return retVal;
     }
 
-    private TokenProvider GetTokenProvider(DefaultAzureCredential defaultCredential)
+    private TokenProvider GetTokenProvider(CancellationToken cancellationToken)
     {
         return TokenProvider.CreateAzureActiveDirectoryTokenProvider(
             authority: $"https://login.microsoftonline.com/{_cfg.TenantId}",
             authCallback: async (audience, authority, state) =>
             {
-                var token = await defaultCredential.GetTokenAsync(new TokenRequestContext(new[] { $"{audience}/.default" }));
-
-                return token.Token;
+                var record = await _emitter.RefreshCredentialOnDemandAsync(
+                    $"{audience}.default", cancellationToken: cancellationToken);                
+                return record.token;
 
                 #region Alternative with spn
                 //IConfidentialClientApplication app = ConfidentialClientApplicationBuilder.Create(APP CLIENT ID).WithAuthority(authority).WithClientSecret(APP CLIENT PASSWORD).Build();

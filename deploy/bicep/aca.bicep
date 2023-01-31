@@ -106,7 +106,7 @@ resource ContainerApp 'Microsoft.App/containerApps@2022-06-01-preview' = {
           name: 'emitter' 
           image: '${registryLoginServer}/${EmitterImage}' 
           resources: {
-            cpu: '0.25'
+            cpu: json('0.25')
             memory: '0.5Gi'
           } 
           env: [

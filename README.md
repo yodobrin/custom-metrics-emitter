@@ -4,14 +4,16 @@ This sample project show how to implement sending a custom metric events to Azur
 
 
 ## Table of Contents
-- [Overview](#overview)
-- [High-Level Solution Concept](#high-level-solution-concept)
-- [Custom Metric](#custom-metric)
-- [Step by step deployment](#step-by-step-deployment)
-  - [Pre-requisite](#pre-requisite)
-  - [Deploying the solution](#deploying-the-solution)
-  - [Configuring Bicep to deploy the solution](#configuring-bicep-to-deploy-the-solution)
-- [Build and Publish](#build-and-publish)
+- [Custom-Metrics-Emitter](#custom-metrics-emitter)
+  - [Table of Contents](#table-of-contents)
+  - [Overview](#overview)
+  - [High-Level Solution Concept](#high-level-solution-concept)
+    - [Custom Metric](#custom-metric)
+  - [Step by step deployment](#step-by-step-deployment)
+    - [Pre-requisite](#pre-requisite)
+    - [Deploying the solution](#deploying-the-solution)
+      - [Configuring Bicep to deploy the solution](#configuring-bicep-to-deploy-the-solution)
+  - [Test Locally](#test-locally)
 
 ## Overview
 
@@ -73,7 +75,7 @@ The image for this solution was build using GitHub Action. The code is [here](.g
 
 4. Run the following command to deploy the solution:
 
-   `az deployment group create --resource-group <resource group name> --template-file main.bicep --parameters @params.json`
+   `az deployment group create --resource-group <resource group name> --template-file main.bicep --parameters @param.json`
 
 5. Once completed successfully, the solution will be deployed and running.
 
@@ -111,30 +113,7 @@ The following parameters should be set, these are subset of the environment vari
   - `Storage Blob Data Reader` for Azure Storage
 
 
-## Build and Publish - SHOULD WE INCLUDE THIS?
+## Test Locally
+In order to run and test locally the solution, build a docker image (using this [Dockerfile](custom-metrics-emitter/Dockerfile)) and execute the following run command - fill the missing values: 
 
-If you wish to modify this solution, it can be deployed on either Azure Container App or any other Azure service which able to host container solution and has User Managed Identity support (in case this is the selected authentication method - see above).
-
-1. Build and Publish a docker image, in the sample - we are building and publishing the image using Github action which trigger once a new release created.
-2. Deploy the solution on the chosen Azure Service, in the sample - we are using Azure Container App, 
-   - if the chosen authentication method is User Managed Identity - assign the identity to the service.
-   - The following environemnt variables should be set:
-     - `TenantId`             - { Tenant Id of Azure Subscription }
-     - `SubscriptionId`          - { Azure Subscription Id }
-     - `ResourceGroup`            - { Resource Group name where the Azure Event Hub deployed }
-     - `Region`                   - { Region name where the Azure Event Hub deployed }
-     - `EventHubNamespace`        - { Name of Azure Event Hub Namespace}
-     - `EventHubName`             - { Name of Azure Event Hub }
-     - `ConsumerGroup`            - { Consumer Group which need to be monitored }
-     - `CheckpointAccountName`    - { Azure Storage name of checkpoint }
-     - `CheckpointContainerName`  - { Container name which the consumer update }      
-     - `CustomMetricInterval` (optional) - { Metric send interval in ms, default: 10000ms }
-     - `ManagedIdentityClientId` (optional) - { User Managed Identity client id in case of managed identity authentication}
-     - `AZURE_TENANT_ID` (optional) - {tenand Id in case of service principal authentication }
-     - `AZURE_CLIENT_ID` (optional) - {spn client id in case of service principal authentication }
-     - `AZURE_CLIENT_SECRET` (optional) - { spn client secret in case of principal authentication }
-     - `APPLICATIONINSIGHTS_CONNECTION_STRING` (optional) - Azure Application Insights connection string
-
-Example of running the docker image locally:
-
-`docker run -d -e EventHubNamespace="{EventHubNamespace}" -e Region="{Region}" -e SubscriptionId="{SubscriptionId}" -e ResourceGroup="{ResourceGroup}" -e TenantId="{TenantId}"  -e EventHubName="{EventHubName}" -e ConsumerGroup="{ConsumerGroup}" -e CheckpointAccountName="{CheckpointAccountName}" -e CheckpointContainerName="{CheckpointContainerName}" -e CustomMetricInterval="{CustomMetricInterval}" -e ManagedIdentityClientId="{ManagedIdentityClientId}" -e APPLICATIONINSIGHTS_CONNECTION_STRING="{APPLICATIONINSIGHTS_CONNECTION_STRING}" -e AZURE_TENANT_ID={AZURE_TENANT_ID} -e AZURE_CLIENT_ID={AZURE_CLIENT_ID} -e AZURE_CLIENT_SECRET={AZURE_CLIENT_SECRET}  <dockerimagename>`
+`docker run -d -e EventHubNamespace="" -e Region="" -e SubscriptionId="" -e ResourceGroup="" -e TenantId=""  -e EventHubName="" -e ConsumerGroup="" -e CheckpointAccountName="" -e CheckpointContainerName="" -e CustomMetricInterval="" -e ManagedIdentityClientId="" -e APPLICATIONINSIGHTS_CONNECTION_STRING="" -e AZURE_TENANT_ID="" -e AZURE_CLIENT_ID="" -e AZURE_CLIENT_SECRET=""  <dockerimagename>`
