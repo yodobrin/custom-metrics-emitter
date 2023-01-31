@@ -140,9 +140,19 @@ public class EmitterHelper
 
             if (isExpired)
             {
-                _scopeAndTokens.TryAdd(scope, await _defaultAzureCredential.GetTokenAsync(
-                    requestContext: new TokenRequestContext(new[] { scope }),
-                    cancellationToken: cancellationToken));
+                var newToken = await _defaultAzureCredential.GetTokenAsync(
+                        requestContext: new TokenRequestContext(new[] { scope }),
+                        cancellationToken: cancellationToken);
+
+                AccessToken? token;
+                if (_scopeAndTokens.TryGetValue(scope, out token) == false)
+                {
+                    _scopeAndTokens.TryAdd(scope, newToken);
+                }
+                else
+                {
+                    _scopeAndTokens[scope] = newToken;
+                }
             }
 
             return new AccessTokenAndExpiration(isExpired, _scopeAndTokens[scope]!.Value.Token);
