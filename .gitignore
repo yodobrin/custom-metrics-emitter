@@ -1,3 +1,4 @@
 .vs
 
 deploy/bicep/param_local.json
+deploy/bicep/param_local_redeploy.json

@@ -20,6 +20,8 @@ param EventHubName string
 @description('managed identity name from param.json file')
 param managedIdentityName string 
 
+@description('container app environment name from param.json file')
+param AcaEnvName string
 
 // create a managed identity
 resource mngIdentity 'Microsoft.ManagedIdentity/userAssignedIdentities@2022-01-31-preview' = {
@@ -54,7 +56,7 @@ module ACA 'aca.bicep' = {
     ManagedIdentityClientId: mngIdentity.properties.clientId
     EventHubNamespace: EventHubNamespace
     CheckpointAccountName: CheckpointAccountName
-    name: 'aca-emitter-env'
+    AcaEnvName: AcaEnvName
     EventHubName: EventHubName
     CheckpointContainerName: CheckpointContainerName
     CustomMetricInterval: CustomMetricInterval
