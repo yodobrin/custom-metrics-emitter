@@ -5,7 +5,7 @@ param location string = resourceGroup().location
 
 
 @description('Name of the Container App Environment')
-param name string
+param AcaEnvName string
 
 
 
@@ -21,7 +21,7 @@ resource logAnalytics 'Microsoft.OperationalInsights/workspaces@2021-12-01-previ
 
 
 resource containerAppEnvironment 'Microsoft.App/managedEnvironments@2022-06-01-preview'  = {
-  name: name  
+  name: AcaEnvName  
   location: location 
     properties: {
     appLogsConfiguration: {

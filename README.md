@@ -75,7 +75,9 @@ The image for this solution was build using GitHub Action. The code is [here](.g
 
 4. Run the following command to deploy the solution:
 
-   `az deployment group create --resource-group <resource group name> --template-file main.bicep --parameters @param.json`
+```azcli
+az deployment group create --resource-group <resource group name> --template-file main.bicep --parameters @param.json
+```
 
 5. Once completed successfully, the solution will be deployed and running.
 
@@ -112,6 +114,17 @@ The following parameters should be set, these are subset of the environment vari
 
   - `Storage Blob Data Reader` for Azure Storage
 
+## Redploying to other image tag
+
+When you need to update to latest or specific version of the image, you can use the following approach:
+
+1. Modify the `param_redeploy.json` file to include the required parameters for the deployment (Use the existing values from your resource group)
+
+2. Run the following command to redeploy the solution:
+
+```azcli
+az deployment group create --resource-group  <resource group name> --template-file redeploy.bicep --parameters @param_redeploy.json
+```
 
 ## Test Locally
 In order to run and test locally the solution, build a docker image (using this [Dockerfile](custom-metrics-emitter/Dockerfile)) and execute the following run command - fill the missing values: 

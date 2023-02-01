@@ -18,10 +18,16 @@
         "value": "10000"
       },
       "managedIdentityName":{
-        "value": "<the to be created managed identity name>"
+        "value": "<existing managed identity name>"      
       },
       "AcaEnvName":{
-        "value": "<your ACA environment name>"
+        "value": "< your existing ACA env name>"
+      },
+      "EmitterImage":{
+        "value": "yodobrin/custom-metrics-emitter:0.4"
+      },
+      "ContainerAppName":{
+        "value": "<your existing container app name>"
       }
     }
   }
