@@ -116,4 +116,6 @@ The following parameters should be set, these are subset of the environment vari
 ## Test Locally
 In order to run and test locally the solution, build a docker image (using this [Dockerfile](custom-metrics-emitter/Dockerfile)) and execute the following run command - fill the missing values: 
 
-`docker run -d -e EventHubNamespace="" -e Region="" -e SubscriptionId="" -e ResourceGroup="" -e TenantId=""  -e EventHubName="" -e ConsumerGroup="" -e CheckpointAccountName="" -e CheckpointContainerName="" -e CustomMetricInterval="" -e ManagedIdentityClientId="" -e APPLICATIONINSIGHTS_CONNECTION_STRING="" -e AZURE_TENANT_ID="" -e AZURE_CLIENT_ID="" -e AZURE_CLIENT_SECRET=""  <dockerimagename>`
+`docker run -d -e EventHubNamespace="" -e Region="" -e SubscriptionId="" -e ResourceGroup="" -e TenantId=""  -e EventHubName="" -e ConsumerGroup="optional" -e CheckpointAccountName="" -e CheckpointContainerName="" -e CustomMetricInterval="" -e ManagedIdentityClientId="optional" -e APPLICATIONINSIGHTS_CONNECTION_STRING="optional" -e AZURE_TENANT_ID="optional" -e AZURE_CLIENT_ID="optional" -e AZURE_CLIENT_SECRET="optional"  <dockerimagename>`
+
+remark: ConsumerGroup environment variable - if `empty` then - geting all consumer group of given EventHub, else: can add specific consumer group names seprated by `;`
