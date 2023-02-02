@@ -29,7 +29,7 @@ public class EventHubEmitter
 
     private readonly EmitterHelper _emitter;
     private readonly BlobContainerClient _checkpointContainerClient = default!;
-    private readonly EventHubClient _eventhubClient = default!;
+    private EventHubClient _eventhubClient = default!;
     private readonly string[] _consumerGroups = default!;
    
 
@@ -56,14 +56,25 @@ public class EventHubEmitter
             blobContainerUri: new($"https://{_cfg.CheckpointAccountName}{STORAGE_HOST_SUFFIX}/{_cfg.CheckpointContainerName}"),
             credential: defaultCredential);
 
-        _eventhubClient = EventHubClient.CreateWithTokenProvider(
-                endpointAddress: new Uri($"sb://{_cfg.EventHubNamespace}{SERVICE_BUS_HOST_SUFFIX}/"),
-                entityPath: _cfg.EventHubName,
-                tokenProvider: GetTokenProvider());          
+        CreateEventHubClient();
     }
-   
+
+    private void CreateEventHubClient(CancellationToken cancellationToken = default)
+    {
+        _eventhubClient = EventHubClient.CreateWithTokenProvider(
+            endpointAddress: new Uri($"sb://{_cfg.EventHubNamespace}{SERVICE_BUS_HOST_SUFFIX}/"),
+            entityPath: _cfg.EventHubName,
+            tokenProvider: GetTokenProvider(cancellationToken));
+    }
+
     public async Task<HttpResponseMessage> ReadFromBlobStorageAndPublishToAzureMonitorAsync(CancellationToken cancellationToken = default)
     {
+        var refreshAction = await _emitter.RefreshAzureEventHubCredentialOnDemandAsync(cancellationToken: cancellationToken);
+        if (refreshAction.isExpired == true)
+        {
+            CreateEventHubClient(cancellationToken);
+        }
+
         var totalLag = await GetLagAsync(cancellationToken);
 
         var emitterdata = new EmitterSchema(
