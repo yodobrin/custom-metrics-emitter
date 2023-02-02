@@ -4,32 +4,39 @@ using Azure.Identity;
 
 public class Worker : BackgroundService
 {
-    private readonly ILogger<Worker> _logger;
-    private readonly EmitterConfig _cfg;
-    private readonly EventHubEmitter _ehEmitter;
+    private readonly ILogger<Worker> _logger = default!;
+    private readonly EmitterConfig _cfg = default!;
+    private readonly EventHubEmitter _ehEmitter = default!;
 
     public Worker(ILogger<Worker> logger, IConfiguration configuration)
     {
-        _logger = logger;
+        try
+        {
+            _logger = logger;
 
-        _cfg = new(
-            EventHubNamespace: configuration.Require("EventHubNamespace"),
-            EventHubName: configuration.Require("EventHubName"),
-            ConsumerGroup: configuration.Require("ConsumerGroup"),
-            CheckpointAccountName: configuration.Require("CheckpointAccountName"),
-            CheckpointContainerName: configuration.Require("CheckpointContainerName"),
-            Region: configuration.Require("Region"),
-            TenantId: configuration.Require("TenantId"),
-            SubscriptionId: configuration.Require("SubscriptionId"),
-            ResourceGroup: configuration.Require("ResourceGroup"),
-            ManagedIdentityClientId: configuration.Optional("ManagedIdentityClientId"),
-            CustomMetricInterval: configuration.GetIntOrDefault("CustomMetricInterval", defaulT: 10_000));
+            _cfg = new(
+                EventHubNamespace: configuration.Require("EventHubNamespace"),
+                EventHubName: configuration.Require("EventHubName"),
+                ConsumerGroup: configuration.Optional("ConsumerGroup"),
+                CheckpointAccountName: configuration.Require("CheckpointAccountName"),
+                CheckpointContainerName: configuration.Require("CheckpointContainerName"),
+                Region: configuration.Require("Region"),
+                TenantId: configuration.Require("TenantId"),
+                SubscriptionId: configuration.Require("SubscriptionId"),
+                ResourceGroup: configuration.Require("ResourceGroup"),
+                ManagedIdentityClientId: configuration.Optional("ManagedIdentityClientId"),
+                CustomMetricInterval: configuration.GetIntOrDefault("CustomMetricInterval", defaulT: 10_000));
 
-        var defaultCredential = string.IsNullOrEmpty(_cfg.ManagedIdentityClientId)
-            ? new DefaultAzureCredential()
-            : new DefaultAzureCredential(options: new (){ ManagedIdentityClientId = _cfg.ManagedIdentityClientId });
+            var defaultCredential = string.IsNullOrEmpty(_cfg.ManagedIdentityClientId)
+                ? new DefaultAzureCredential()
+                : new DefaultAzureCredential(options: new() { ManagedIdentityClientId = _cfg.ManagedIdentityClientId });
 
-        _ehEmitter = new(_logger, _cfg, defaultCredential);
+            _ehEmitter = new(_logger, _cfg, defaultCredential);
+        }
+        catch(Exception ex)
+        {
+            logger.LogError("{error}", ex.ToString());
+        }
     }
 
     protected override async Task ExecuteAsync(CancellationToken cancellationToken = default)
