@@ -5,7 +5,9 @@ using Azure.Identity;
 using Azure.Storage.Blobs;
 using Azure.Storage.Blobs.Models;
 using custom_metrics_emitter.emitters;
-using Microsoft.Azure.EventHubs;
+using Azure.Messaging.EventHubs;
+using Azure.Messaging.EventHubs.Consumer;
+using System.Collections.Concurrent;
 
 internal record LagInformation(string ConsumerName, string PartitionId, long Lag);
 
@@ -29,12 +31,12 @@ public class EventHubEmitter
 
     private readonly EmitterHelper _emitter;
     private readonly BlobContainerClient _checkpointContainerClient = default!;
-    private EventHubClient _eventhubClient = default!;
-    private readonly string[] _consumerGroups = default!;
-   
+    private readonly ConcurrentDictionary<string, ConsumerClientInfo> _eventhubConsumerClientsInfo = new();
+    private readonly string[] _consumerGroups = default!;    
 
     public EventHubEmitter(ILogger<Worker> logger, EmitterConfig config, DefaultAzureCredential defaultCredential)
     {
+        
         (_logger, _cfg) = (logger, config);
 
         _emitter = new EmitterHelper(_logger, defaultCredential);
@@ -56,25 +58,24 @@ public class EventHubEmitter
             blobContainerUri: new($"https://{_cfg.CheckpointAccountName}{STORAGE_HOST_SUFFIX}/{_cfg.CheckpointContainerName}"),
             credential: defaultCredential);
 
-        CreateEventHubClient();
-    }
+        //init eventhubConsumerClients per consumer group
+        foreach (string cGroup in _consumerGroups)
+        {
+            var client = new EventHubConsumerClient(
+                consumerGroup: cGroup,
+                fullyQualifiedNamespace: $"{_cfg.EventHubNamespace.ToLowerInvariant()}{SERVICE_BUS_HOST_SUFFIX}",
+                eventHubName: _cfg.EventHubName,
+                credential: defaultCredential);
 
-    private void CreateEventHubClient(CancellationToken cancellationToken = default)
-    {
-        _eventhubClient = EventHubClient.CreateWithTokenProvider(
-            endpointAddress: new Uri($"sb://{_cfg.EventHubNamespace}{SERVICE_BUS_HOST_SUFFIX}/"),
-            entityPath: _cfg.EventHubName,
-            tokenProvider: GetTokenProvider(cancellationToken));
-    }
+            var partitions = client.GetPartitionIdsAsync().Result;
+
+            _eventhubConsumerClientsInfo.TryAdd(cGroup,
+                new(consumerClient: client, partitionIds: partitions));                           
+        }   
+    }    
 
     public async Task<HttpResponseMessage> ReadFromBlobStorageAndPublishToAzureMonitorAsync(CancellationToken cancellationToken = default)
     {
-        var refreshAction = await _emitter.RefreshAzureEventHubCredentialOnDemandAsync(cancellationToken: cancellationToken);
-        if (refreshAction.isExpired == true)
-        {
-            CreateEventHubClient(cancellationToken);
-        }
-
         var totalLag = await GetLagAsync(cancellationToken);
 
         var emitterdata = new EmitterSchema(
@@ -100,11 +101,9 @@ public class EventHubEmitter
 
     private async Task<IEnumerable<LagInformation>> GetLagAsync(CancellationToken cancellationToken = default)
     {
-        EventHubRuntimeInformation ehInfo = await _eventhubClient.GetRuntimeInformationAsync();
-
         // Query all partitions in parallel
         var tasks = from consumer in _consumerGroups
-                    from id in ehInfo.PartitionIds
+                    from id in _eventhubConsumerClientsInfo[consumer]._partitionIds
                     select new { consumerGroup = consumer, partitionId = id, Task = LagInPartition(consumer, id, cancellationToken) };
 
         await Task.WhenAll(tasks.Select(s => s.Task));        
@@ -120,10 +119,11 @@ public class EventHubEmitter
         long retVal = 0;
         try
         {
-            var partitionInfo = await _eventhubClient.GetPartitionRuntimeInformationAsync(partitionId);
-
+            var partitionInfo = await _eventhubConsumerClientsInfo[consumerGroup]._consumerClient.GetPartitionPropertiesAsync(
+                partitionId,
+                cancellationToken);           
             // if partitionInfo.LastEnqueuedOffset = -1, that means event hub partition is empty
-            if ((partitionInfo != null) && (partitionInfo.LastEnqueuedOffset == "-1"))
+            if ((partitionInfo != null) && (partitionInfo.LastEnqueuedOffset == -1))
             {
                 _logger.LogInformation("LagInPartition Empty partition");
             }
@@ -180,22 +180,15 @@ public class EventHubEmitter
         return retVal;
     }
 
-    private TokenProvider GetTokenProvider(CancellationToken cancellationToken = default)
+    private class ConsumerClientInfo
     {
-        return TokenProvider.CreateAzureActiveDirectoryTokenProvider(
-            authority: $"https://login.microsoftonline.com/{_cfg.TenantId}",
-            authCallback: async (audience, authority, state) =>
-            {
-                _logger.LogInformation($"Refresh {audience} Token");
-                var record = await _emitter.RefreshCredentialOnDemandAsync(
-                    $"{audience}.default", cancellationToken: cancellationToken);                
-                return record.token;
+        public EventHubConsumerClient _consumerClient;
+        public string[] _partitionIds;
 
-                #region Alternative with spn
-                //IConfidentialClientApplication app = ConfidentialClientApplicationBuilder.Create(APP CLIENT ID).WithAuthority(authority).WithClientSecret(APP CLIENT PASSWORD).Build();
-                //var authResult = await app.AcquireTokenForClient(new string[] { $"{audience}/.default" }).ExecuteAsync();
-                //return authResult.AccessToken;
-                #endregion
-            });
+        public ConsumerClientInfo(EventHubConsumerClient consumerClient, string[] partitionIds)
+        {
+            _consumerClient = consumerClient;
+            _partitionIds = partitionIds;
+        }
     }
 }
