@@ -31,7 +31,7 @@ public class EventHubEmitter
 
     private readonly EmitterHelper _emitter;
     private readonly BlobContainerClient _checkpointContainerClient = default!;
-    private readonly ConcurrentDictionary<string, ConsumerClientInfo> _eventhubConsumerClientsInfo = new();
+    private readonly Dictionary<string, ConsumerClientInfo> _eventhubConsumerClientsInfo = new();
     private readonly string[] _consumerGroups = default!;    
 
     public EventHubEmitter(ILogger<Worker> logger, EmitterConfig config, DefaultAzureCredential defaultCredential)

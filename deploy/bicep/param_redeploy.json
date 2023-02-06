@@ -3,31 +3,31 @@
     "contentVersion": "1.0.0.0",
     "parameters": {          
       "EventHubNamespace": {
-        "value": "<Event exisitng Hub Namespace>"
+        "value": "emitter"
       },
       "EventHubName":{
-        "value": "<your existing EventHub Name>"
+        "value": "app1-eventhubs"
       },
       "CheckpointAccountName":{
-        "value": "<your Checkpoint Account Name>"
+        "value": "emitterscheck"
       },
       "CheckpointContainerName":{
-        "value": "<your Checkpoint Container Name>"
+        "value": "checkpoints"
       },
       "CustomMetricInterval":{
-        "value": "10000"
+        "value": "31000"
       },
       "managedIdentityName":{
-        "value": "<existing managed identity name>"      
+        "value": "emitterid"      
       },
       "AcaEnvName":{
-        "value": "< your existing ACA env name>"
+        "value": "ypcontainerapp"
       },
       "EmitterImage":{
-        "value": "yodobrin/custom-metrics-emitter:0.4"
+        "value": "yodobrin/custom-metrics-emitter:1.0"
       },
       "ContainerAppName":{
-        "value": "<your existing container app name>"
+        "value": "emitterapp"
       }
     }
   }
